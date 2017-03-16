@@ -5,3 +5,4 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Causes of Death](http://rpubs.com/susan_li/causes-of-death)
 * [Revealing Toronto's Parking Ticket Data](http://rpubs.com/susan_li/toronto-parking-tickets)
 * [Analyzing Census Data for Portland Maine](http://rpubs.com/susan_li/census-data-portland)
+* [My First Shiny App - USA Census](https://susanli.shinyapps.io/default-shiny-app/)
