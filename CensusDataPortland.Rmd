@@ -1,0 +1,182 @@
+---
+output:
+
+  html_document:
+
+    smart: false
+---
+
+Analyzing Census Data for Portland, Maine
+===========================================================================
+
+Susan Li
+
+March 15 2016
+
+Today I would like to use R to understand demographics of the state of Maine, the city of Portland, and zipcode of 04101.
+
+For this project, I will be using package "choroplethr" that simplifies the creation of choropleths (thematic maps) in R.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+First, have a look the state data, head only. 
+
+```{r}
+library(choroplethr)
+data(df_pop_state)
+head(df_pop_state)
+```
+
+So, what is the population of Maine?
+
+```{r}
+df_pop_state[df_pop_state$region == 'maine', ]
+```
+
+Let's make a boxplot to see the distribution of population in the US, and where is Maine's position.
+
+```{r}
+options("scipen"=100, "digits"=4)
+summary(df_pop_state$value)
+boxplot(df_pop_state$value)
+```
+
+The median population of a state in the US is over 4.3 million, 3 times of Maine's population. And Maine's population is less than the first quartile value. This indicates that about 75% of states have a population more than Maine's, or about 25% of states have a population less than Maine's.
+
+```{r}
+state_choropleth(df_pop_state)
+```
+
+Here you go. Now We can see which states are the most/least populated.
+
+```{r}
+state_choropleth(df_pop_state, num_colors = 1)
+```
+
+I think I like this color and scale better. 
+
+Let me drill down to some other interesting facts. 
+
+```{r}
+data(df_state_demographics)
+names(df_state_demographics)
+```
+
+```{r}
+df_state_demographics$per_capita_income[df_state_demographics$region == 'maine']
+```
+
+The income per capita in Maine is $26824. and how is it to compare with the other states?
+
+```{r}
+df_state_demographics$value = df_state_demographics$per_capita_income
+ 
+state_choropleth(df_state_demographics, num_colors=5)
+```
+
+Not bad, almost in the middle. 
+
+How about the percentage of white population?
+
+```{r}
+df_state_demographics$percent_white[df_state_demographics$region == 'maine']
+df_state_demographics$value = df_state_demographics$percent_white
+ 
+state_choropleth(df_state_demographics, num_colors=5)
+```
+
+Seems Maine is among the whitest states in the nation (caucasian population at 94%). [Wikipedia](https://en.wikipedia.org/wiki/Maine) says that Maine has the highest percentage of French Americans among American states and most of the French in Maine are of Canadian Origin and they came from Quebec as immigrants between 1840 and 1930. Interesting. 
+
+Now, how about county, or city? 
+
+After a quick google search, I found Portland Maine belongs to Cumberland County, the FIPS code for Cumberland County is 23005.
+
+So the population of Cumberland County.
+
+```{r}
+data(df_pop_county)
+df_pop_county[df_pop_county$region == 23005, ]
+
+boxplot(df_pop_county$value)
+
+```
+
+A little over 282,000.
+
+It's hard to compare all counties across the US, because there are so many outliers(counties with extreme large population).
+
+```{r}
+county_choropleth(df_pop_county, num_colors=1)
+```
+
+The national map does not tell us good story anymore, because there are so many counties. Let's zoom in. 
+
+```{r}
+county_choropleth(df_pop_county, state_zoom="maine", num_colors=4)
+```
+
+Apparently, Cumberland is the most populated county in Maine.
+
+What is the median rent in Cumberland? And how is it to compare with other counties?
+
+```{r}
+data("df_county_demographics")
+df_county_demographics$median_rent[df_county_demographics$region == 23005]
+
+```
+
+
+```{r}
+df_county_demographics$value = df_county_demographics$median_rent
+
+county_choropleth(df_county_demographics, num_colors=1, state_zoom="maine")
+```
+
+Oh no, Cumberland county has one of the highest median rent, people who live there must be well off!
+
+Now let's drill down even further to the zipcode.
+
+What is the population of the zip 04101?
+
+```{r}
+library(choroplethrZip)
+data(df_pop_zip)
+df_pop_zip[df_pop_zip$region == "04101", ]
+```
+
+17844.
+
+```{r}
+zip_choropleth(df_pop_zip, state_zoom="maine")
+```
+
+It turns out, zip 04101 area is among the most populated zip areas in Maine. However, the most popuated zip area in Maine has 45087 people. 
+
+Let's zoom in to the county level for the zipcode. 
+
+```{r}
+zip_choropleth(df_pop_zip, county_zoom=23005)
+```
+
+Still, zip 04101 area is one of the most populated zip areas in Cumberland county, and the most populated zip area in the county has 30639 people. 
+
+Let's explore more details on the demographics of this zip area.
+
+```{r}
+data(df_zip_demographics)
+df_zip_demographics$per_capita_income[df_zip_demographics$region == "04101"]
+```
+
+The income per capita in this zip area is $24560. Let's see what that means.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+df_zip_demographics$value = df_zip_demographics$per_capita_income
+
+zip_choropleth(df_zip_demographics, county_zoom=23005, num_colors=1)
+```
+
+Can anyone draw any inference from this map? It seems the highest income per capita in the county is above $60K, and lowest below $20K. 
+
+According to above maps, I'm already jealous of people who live in Portland Maine.
