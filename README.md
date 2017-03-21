@@ -6,3 +6,4 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Revealing Toronto's Parking Ticket Data](http://rpubs.com/susan_li/toronto-parking-tickets)
 * [Analyzing Census Data for Portland Maine](http://rpubs.com/susan_li/census-data-portland)
 * [My First Shiny App - USA Census](https://susanli.shinyapps.io/default-shiny-app/)
+* [Alcohol Consumption in Canada](http://rpubs.com/susan_li/alcohol-consumption-canada)
