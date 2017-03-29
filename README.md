@@ -7,3 +7,4 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Analyzing Census Data for Portland Maine](http://rpubs.com/susan_li/census-data-portland)
 * [My First Shiny App - USA Census](https://susanli.shinyapps.io/default-shiny-app/)
 * [Alcohol Consumption in Canada](http://rpubs.com/susan_li/alcohol-consumption-canada)
+* [A Data Analysis of the 2016 Boston Marathon Finishers](http://rpubs.com/susan_li/boston-marathon)
