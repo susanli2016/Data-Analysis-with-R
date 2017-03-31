@@ -1,0 +1,201 @@
+---
+output:
+  html_document:
+    smart: no
+  variant: default
+---
+
+The Latest Donald Trump's Tweets
+============================================================================
+
+Susan Li 
+
+March 31, 2016
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+Just finished a few hours text mining lesson, can't wait to put my new skill into practice, starting from Trump's tweets.
+
+First, apply API keys from twitter. 
+
+```{r}
+library(twitteR)
+consumer_key <- "Your_Consumer_Key"
+consumer_secret <- "Your_Consumer_Secret"
+access_token <- NULL
+access_secret <- NULL
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+```
+
+The maximize request is 3200 tweets, I got 791, which is not bad.
+
+```{r}
+tweets <- userTimeline("realDonaldTrump", n = 3200)
+(n.tweet <- length(tweets))
+```
+
+Have a look the first three
+
+```{r}
+tweets[1:3]
+```
+
+```{r}
+# Conver to dataframe
+tweets.df <- twListToDF(tweets)
+```
+
+Text cleaning process, which includes convert all letters to lower case, remove URL, remove anything other than English letter and space, remove stopwords, and extra white space. 
+
+```{r}
+# Text mining process
+library(tm) 
+library(stringr)
+myCorpus <- Corpus(VectorSource(tweets.df$text)) 
+# convert to lower case 
+myCorpus <- tm_map(myCorpus, content_transformer(str_to_lower))
+# remove URLs 
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x) 
+myCorpus <- tm_map(myCorpus, content_transformer(removeURL)) 
+# remove anything other than English letters or space 
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x) 
+myCorpus <- tm_map(myCorpus, content_transformer(removeNumPunct)) 
+# remove stopwords 
+myStopwords <- myStopwords <- c(stopwords('english'), "amp", "trump") 
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords) 
+# remove extra whitespace 
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+```
+
+Look at these three tweets again
+
+```{r}
+# Stemming process
+myCorpus <- tm_map(myCorpus, stemDocument)
+# inspect the first three ``documents"
+inspect(myCorpus[1:3])
+```
+
+Need to replace a few words, such as 'potenti' to 'potential', 'societi' to 'society', 'countri' to 'country'.  
+
+```{r}
+replaceWord <- function(corpus, oldword, newword) { 
+  tm_map(corpus, content_transformer(gsub), 
+         pattern=oldword, replacement=newword) 
+} 
+myCorpus <- replaceWord(myCorpus, "potenti", "potential") 
+myCorpus <- replaceWord(myCorpus, "societi", "society") 
+myCorpus <- replaceWord(myCorpus, "countri", "country")
+```
+
+### Building term document matrix
+
+```{r}
+# term document matrix 
+tdm <- TermDocumentMatrix(myCorpus, control = list(wordLengths = c(1, Inf))) 
+tdm
+```
+
+As you can see, the term-document matrix is composed of 2189 terms and 791 documents(tweets). It is very sparse, with 100% of the entries being zero. Let's have a look at the terms of 'clinton', 'bad' and 'great', and tweets numbered 21 to 30.
+
+```{r}
+idx <- which(dimnames(tdm)$Terms %in% c("clinton", "bad", "great"))
+as.matrix(tdm[idx, 21:30])
+```
+
+### What are the top frequent terms?
+
+```{r}
+
+(freq.terms <- findFreqTerms(tdm, lowfreq = 30))
+
+```
+
+### A picture worth a thousand words.
+
+```{r}
+term.freq <- rowSums(as.matrix(tdm)) 
+term.freq <- subset(term.freq, term.freq >= 40) 
+df <- data.frame(term = names(term.freq), freq = term.freq)
+library(ggplot2)
+ggplot(df, aes(x=term, y=freq)) + geom_bar(stat="identity") + xlab("Terms") + ylab("Count") + coord_flip() + theme(axis.text=element_text(size=7))
+```
+
+### Word Cloud
+
+```{r}
+m <- as.matrix(tdm) 
+# calculate the frequency of words and sort it by frequency 
+word.freq <- sort(rowSums(m), decreasing = T) 
+# colors 
+library(RColorBrewer)
+pal <- brewer.pal(9, "BuGn")[-(1:4)]
+# plot word cloud 
+library(wordcloud)
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = 3, random.order = F, colors = pal)
+```
+
+### Which word/words are associated with 'will'? There are three.
+
+```{r}
+findAssocs(tdm, "will", 0.2)
+```
+
+### Which word/words are associated with 'great'? - This is obvious.
+
+```{r}
+findAssocs(tdm, "great", 0.2)
+```
+
+### There are many words are associated with 'bad'?
+
+```{r}
+findAssocs(tdm, "bad", 0.2)
+```
+
+### Clustering Words
+
+```{r}
+# remove sparse terms
+tdm2 <- removeSparseTerms(tdm, sparse=0.95)
+m2 <- as.matrix(tdm2)
+# cluster terms
+distMatrix <- dist(scale(m2))
+fit <- hclust(distMatrix, method="ward.D")
+plot(fit)
+# cut tree into 10 clusters
+rect.hclust(fit, k=10)
+(groups <- cutree(fit, k=10))
+```
+
+We can see the words in the tweets, words 'will', 'great', 'thank', 'join', 'state' are not clustered into any group, 'hillari', 'clinton' and 'draintheswamp' are clustered into one group, 'us' is not clustered in any group, 'go', 'make', 'america', 'time', 'today', 'get', 'watch', 'job' and 'country' are clustered into one group, 'elect' is not clustered into any group, 'people' and 'just' are clustered into one group. 
+
+### Clustering Tweets
+
+```{r}
+# transpose the matrix to cluster documents (tweets)
+m3 <- t(m2)
+# set a fixed random seed
+set.seed(100)
+# k-means clustering of tweets
+k <- 8
+kmeansResult <- kmeans(m3, k)
+# cluster centers
+round(kmeansResult$centers, digits=3)
+```
+
+### Check the top three words in every cluster
+
+```{r}
+for (i in 1:k) {
+cat(paste("cluster ", i, ": ", sep=""))
+s <- sort(kmeansResult$centers[i,], decreasing=T)
+cat(names(s)[1:3], "\n")
+}
+```
+
+Cluster 1 talks about US will be great, cluster 2 talks about Hillary Clinton, cluster 3 seems talk about thanking people voting for him, cluster 4 talks about great people, cluster 5 seems talk about he was elected by people, cluster 6 talks about jobs, everyone knows cluster 7, cluster 8 is about cleaning up government corruptions. 
+
+As of now, I am bored with his tweets, or at least bored with analyzing his tweets.
