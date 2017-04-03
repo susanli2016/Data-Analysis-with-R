@@ -44,7 +44,7 @@ tweets[1:3]
 tweets.df <- twListToDF(tweets)
 ```
 
-Text cleaning process, which includes convert all letters to lower case, remove URL, remove anything other than English letter and space, remove stopwords, and extra white space. 
+Text cleaning process, which includes convert all letters to lower case, remove URL, remove anything other than English letter and space, remove stopwords and extra white space. 
 
 ```{r}
 # Text mining process
@@ -250,7 +250,7 @@ ggplot(aes(x = as.Date(timestamp), y = value, group = variable), data = Tweets_t
   ggtitle("Trump Tweets Sentiment Over Time")
 ```
 
-The positive sentiment scores are always higher than the negative sentiment scores. And both show decrease over time, especially negaive sentiment experienced a significant drop recently. However, the simple text mining process conducted in this post does not make this conclusion. A more sophisticated [text analysis of Trump's tweets](http://varianceexplained.org/r/trump-tweets/) by [David Robinson](http://varianceexplained.org/r/trump-tweets/) found that Trump writes only the angrier half from Android, and another postive half from his staff using iPhone. 
+The positive sentiment scores are always higher than the negative sentiment scores. And the negative sentiment experienced a significant drop recently,the positive sentiment increased to the highlest point. However, the simple text mining process conducted in this post does not make this conclusion. A more sophisticated [text analysis of Trump's tweets](http://varianceexplained.org/r/trump-tweets/) by [David Robinson](http://varianceexplained.org/r/trump-tweets/) found that Trump writes only the angrier half from Android, and another postive half from his staff using iPhone. 
 
 ## The end
 
