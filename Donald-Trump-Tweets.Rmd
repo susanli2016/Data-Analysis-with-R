@@ -1,0 +1,257 @@
+---
+output:
+  html_document:
+    smart: no
+  variant: default
+---
+
+The Latest Trump's Tweets
+============================================================================
+
+Susan Li 
+
+April 3, 2017
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+Just finished a few hours text mining lesson, can't wait to put my new skill into practice, starting from Trump's tweets.
+
+First, apply API keys from twitter. 
+
+```{r}
+library(twitteR)
+consumer_key <- "Your_Consumer_Key"
+consumer_secret <- "Your_Consumer_Secret"
+access_token <- NULL
+access_secret <- NULL
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+```
+
+The maximize request is 3200 tweets, I got 815, which is not bad.
+
+```{r}
+tweets <- userTimeline("realDonaldTrump", n = 3200)
+(n.tweet <- length(tweets))
+```
+
+Have a look the first three, then convert all these 815 tweets to a data frame.
+
+```{r}
+tweets[1:3]
+# Conver to dataframe
+tweets.df <- twListToDF(tweets)
+```
+
+Text cleaning process, which includes convert all letters to lower case, remove URL, remove anything other than English letter and space, remove stopwords, and extra white space. 
+
+```{r}
+# Text mining process
+library(tm) 
+library(stringr)
+myCorpus <- Corpus(VectorSource(tweets.df$text)) 
+# convert to lower case 
+myCorpus <- tm_map(myCorpus, content_transformer(str_to_lower))
+# remove URLs 
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x) 
+myCorpus <- tm_map(myCorpus, content_transformer(removeURL)) 
+# remove anything other than English letters or space 
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x) 
+myCorpus <- tm_map(myCorpus, content_transformer(removeNumPunct)) 
+# remove stopwords 
+myStopwords <- myStopwords <- c(stopwords('english'), "amp", "trump") 
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords) 
+# remove extra whitespace 
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+```
+
+Look at these three tweets again.
+
+```{r}
+# Stemming process
+myCorpus <- tm_map(myCorpus, stemDocument)
+# inspect the first three documents
+inspect(myCorpus[1:3])
+```
+
+Need to replace a few words, such as 'peopl' to 'people', 'whitehous' to 'whitehouse', 'countri' to 'country'.  
+
+```{r}
+replaceWord <- function(corpus, oldword, newword) { 
+  tm_map(corpus, content_transformer(gsub), 
+         pattern=oldword, replacement=newword) 
+} 
+myCorpus <- replaceWord(myCorpus, "peopl", "people") 
+myCorpus <- replaceWord(myCorpus, "whitehous", "whitehouse") 
+myCorpus <- replaceWord(myCorpus, "countri", "country")
+```
+
+### Building term document matrix
+
+This is a matrix of numbers (0 and 1) that keeps track of which documents in a corpus use which terms.
+
+```{r}
+# term document matrix 
+tdm <- TermDocumentMatrix(myCorpus, control = list(wordLengths = c(1, Inf))) 
+tdm
+```
+
+As you can see, the term-document matrix is composed of 2243 terms and 815 documents(tweets). It is very sparse, with 100% of the entries being zero. Let's have a look at the terms of 'clinton', 'bad' and 'great', and tweets numbered 21 to 30.
+
+```{r}
+idx <- which(dimnames(tdm)$Terms %in% c("clinton", "bad", "great"))
+as.matrix(tdm[idx, 21:30])
+```
+
+### What are the top frequent terms?
+
+```{r}
+(freq.terms <- findFreqTerms(tdm, lowfreq = 40))
+```
+
+### A picture worth a thousand words.
+
+```{r}
+term.freq <- rowSums(as.matrix(tdm)) 
+term.freq <- subset(term.freq, term.freq >= 40) 
+df <- data.frame(term = names(term.freq), freq = term.freq)
+library(ggplot2)
+ggplot(df, aes(x=term, y=freq)) + geom_bar(stat="identity") + xlab("Terms") + ylab("Count") + coord_flip() + theme(axis.text=element_text(size=7))
+```
+
+### Word Cloud
+
+```{r}
+m <- as.matrix(tdm) 
+# calculate the frequency of words and sort it by frequency 
+word.freq <- sort(rowSums(m), decreasing = T) 
+# colors 
+library(RColorBrewer)
+pal <- brewer.pal(9, "BuGn")[-(1:4)]
+# plot word cloud 
+library(wordcloud)
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = 3, random.order = F, colors = pal)
+```
+
+### Which word/words are associated with 'will'?
+
+```{r}
+findAssocs(tdm, "will", 0.2)
+```
+
+### Which word/words are associated with 'great'? - This is obvious.
+
+```{r}
+findAssocs(tdm, "great", 0.2)
+```
+
+### Which word/ words are associated with 'bad'?
+
+```{r}
+findAssocs(tdm, "bad", 0.2)
+```
+
+### Clustering Words
+
+```{r}
+# remove sparse terms
+tdm2 <- removeSparseTerms(tdm, sparse=0.95)
+m2 <- as.matrix(tdm2)
+# cluster terms
+distMatrix <- dist(scale(m2))
+fit <- hclust(distMatrix, method="ward.D")
+plot(fit)
+# cut tree into 10 clusters
+rect.hclust(fit, k=10)
+(groups <- cutree(fit, k=10))
+```
+
+We can see the words in the tweets, words "will, great, thank, us, join, today" are not clustered into any group, "hillari, clinton" are clustered into one group, "now, president, elect, time, go, make, america, state, watch, get, vote" are clustered in one group, "people, country" are clustered into one group, and "just, nows" are clustered into one group. 
+
+### Clustering Tweets with the k-means Algorithm 
+
+```{r}
+# transpose the matrix to cluster documents (tweets)
+m3 <- t(m2)
+# set a fixed random seed
+set.seed(100)
+# k-means clustering of tweets
+k <- 8
+kmeansResult <- kmeans(m3, k)
+# cluster centers
+round(kmeansResult$centers, digits=3)
+```
+
+### Check the top three words in every cluster
+
+```{r}
+for (i in 1:k) {
+cat(paste("cluster ", i, ": ", sep=""))
+s <- sort(kmeansResult$centers[i,], decreasing=T)
+cat(names(s)[1:3], "\n")
+}
+```
+
+I have admit that I can't easily distinguish the clusters of Trump's tweets are of diﬀerent topics.
+
+### Sentiment Analysis
+
+The sentiment analysis algorithm used here is based on [NRC Word Emotion Association Lexion](http://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm), available from the `tidytext` package which developed by [Julia Silge](http://juliasilge.com/) and [David Robinson](http://varianceexplained.org/). The algorithm associates with eight basic emotions (anger, fear, anticipation, trust, surprise, sadness, joy, and disgust) and two sentiments (negative and positive). 
+
+Sometimes there are tweaks I need to do to get rid of the problem characters. 
+
+```{r}
+library(tidytext)
+library(syuzhet)
+# get rid of the problem characters:
+tweets.df$text <- sapply(tweets.df$text,function(row) iconv(row, "latin1", "ASCII", sub=""))
+Trump_sentiment <- get_nrc_sentiment(tweets.df$text)
+```
+
+Have a look the head of Trump's tweets sentiment scores:
+
+```{r}
+head(Trump_sentiment)
+```
+
+Then combine Trump tweets dataframe and Trump sentiment dataframe together.
+
+```{r}
+tweets.df <- cbind(tweets.df, Trump_sentiment)
+sentiment_total <- data.frame(colSums(tweets.df[,c(17:26)]))
+names(sentiment_total) <- "count"
+sentiment_total <- cbind("sentiment" = rownames(sentiment_total), sentiment_total)
+```
+
+Let's visualize it!
+
+```{r}
+ggplot(aes(x = sentiment, y = count, fill = sentiment), data = sentiment_total) +
+  geom_bar(stat = 'identity') + ggtitle('Sentiment Score for Trump Latest Tweets') + theme(legend.position = "none")
+```
+
+Trump's tweets appear more positive than negative, more trust than anger. Has Trump's tweets always been positive or only after he won the election?
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(reshape2)
+tweets.df$timestamp <- with_tz(ymd_hms(tweets.df$created), "America/New_York")
+Tweets_trend <- tweets.df %>% 
+        group_by(timestamp = cut(timestamp, breaks="1 months")) %>%
+        summarise(negative = mean(negative),
+                  positive = mean(positive)) %>% melt
+library(scales)
+ggplot(aes(x = as.Date(timestamp), y = value, group = variable), data = Tweets_trend) +
+  geom_line(size = 2.5, aes(color = variable)) + 
+  geom_point(size = 1) +
+  ylab("Average sentiment score") + 
+  ggtitle("Trump Tweets Sentiment Over Time")
+```
+
+The positive sentiment scores are always higher than the negative sentiment scores. And both show decrease over time, especially negaive sentiment experienced a significant drop recently. However, the simple text mining process conducted in this post does not make this conclusion. A more sophisticated [text analysis of Trump's tweets](http://varianceexplained.org/r/trump-tweets/) by [David Robinson](http://varianceexplained.org/r/trump-tweets/) found that Trump writes only the angrier half from Android, and another postive half from his staff using iPhone. 
+
+## The end
+
+I really enjoyed working on Trump Tweets analysis. Learning about text mining and social network analysis is very rewarding. Thanks to [Julia Silge](http://juliasilge.com/) and [Yanchang Zhao](http://www.rdatamining.com/)'s tutorials to make it possible. 
