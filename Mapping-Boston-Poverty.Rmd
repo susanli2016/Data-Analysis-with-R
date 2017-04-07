@@ -1,0 +1,130 @@
+---
+output:
+
+  html_document:
+
+    smart: false
+---
+
+Mapping Poverty in Boston 
+============================================================================
+Susan Li
+
+April 6, 2017
+
+[2016 Canadian census data will be released later this year](http://www12.statcan.gc.ca/census-recensement/2016/ref/release-dates-diffusion-eng.cfm), according to [Statistics Canada](http://www.statcan.gc.ca/eng/start). I wasn't going to wait, I decided to play around with [U.S. Census Bureau 2010-2014 ACS (American Community Survey) data](https://www.census.gov/programs-surveys/acs/). 
+
+For this project, I will use a number of packages as follows:
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(sp)
+library(rgdal)
+library(tigris)
+library(dplyr)
+library(maptools) 
+library(ggplot2)
+library(ggmap) 
+```
+
+First, [apply API key from the US Census Bureau](http://api.census.gov/data/key_signup.html).
+
+```{r}
+library(acs14lite)
+census_api_key <- "612cc2cb87caa662809678e821c93a275ef6e811"
+set_api_key(census_api_key)
+```
+
+### Fetch the census data. 
+
+It took me sometime to understand the data and the methodology. I am interested in the poverty in Boston. So I should be looking for table B17021 - Poverty Status of Individuals in the Past 12 Months by Living Arrangement. Within this table, I should fetch the following variables:
+
+* B17021_001E - count of people for whom poverty status has been determined (the sample estimate)
+* B17021_001M: count of people for whom poverty status has been determined (the margin of error)
+* B17021_002E: count of those people whose income in the past 12 months is below poverty (estimate)
+* B17021_002M: count of those people whose income in the past 12 months is below poverty (margin of error)
+
+Boston is the seat of Suffolk County. Cool! it works like a charm! 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE }
+bos_poverty <- acs14(geography = 'tract', state = 'MA', county = 'Suffolk', 
+                 variable = c('B17021_001E', 'B17021_001M', 'B17021_002E', 'B17021_002M'))
+head(bos_poverty)
+```
+
+The related table can be found at [Census FactFinder](https://factfinder.census.gov/faces/tableservices/jsf/pages/productview.xhtml?pid=ACS_14_5YR_B17021&prodType=table)
+
+Next, I need to convert poverty from count to percentage, then calculate the margin of error(MOE)for each percentage. Because MOE is an indicator of the reliability of ACS estimates. Adding the MOE to the estimate provides an upper limit and subtracting the MOE from the estimate provides a lower limit of the range where the true value of the estimate most likely actually falls.
+
+```{r}
+bos_poverty_1 <- bos_poverty %>%
+  mutate(geoid = paste0(state, county, tract),
+         pct = round(100 * (B17021_002E / B17021_001E), 1),
+         moe = round(100 * (moe_prop(B17021_002E, B17021_001E, B17021_002M, B17021_001M)), 1)) %>%
+  select(geoid, pct, moe)
+head(bos_poverty_1)
+```
+
+### Link ACS data to TIGER census tracts, then join the ACS data to the tracts spatial data.
+
+Looks like I am doing it right. 
+
+```{r}
+bos_tract <- tracts('MA', 'Suffolk', cb=TRUE)
+bos_tract_2 <- geo_join(bos_tract, bos_poverty_1, "GEOID", "geoid")
+str(bos_tract_2@data)
+bos_tract_2 <- bos_tract_2[!is.na(bos_tract_2$pct),]
+```
+
+### Now we have a simple map of Suffolk county. 
+
+```{r}
+plot(bos_tract_2)
+```
+
+Use `fortify` function to turn the map into a data frame so that it can easily be plotted with ggplot2, which produce this data frame:
+
+```{r}
+map_data <- fortify(bos_tract_2, data=bos_tract_2@data, region="geoid")
+head(map_data)
+```
+
+### Merge our ACS data to the fortified data frame.
+
+```{r}
+map_data <- merge(map_data, bos_tract_2@data, by.x="id", by.y="geoid")
+head(map_data)
+```
+
+### Now I have a perfect data frame for a map.
+
+```{r}
+ggplot() +
+  geom_polygon(data = map_data, aes(x = long, y = lat, group = group, fill = pct)) +
+  scale_fill_gradient(name='Percent',limits=c(0, 80), low="#56B1F7", high="#132B43")+
+  guides(fill = guide_legend()) +
+  ggtitle("Percent of Individuals below Poverty Level") +
+  theme_classic() +
+  coord_map()
+```
+
+### Let's make the map fancier.
+
+```{r} 
+bos_basemap <-get_map('Boston', zoom=12)
+ggmap(bos_basemap) +
+  geom_polygon(data = map_data, aes(x = long, y = lat, group = group, fill = pct)) +
+  scale_fill_gradient(name='Percent',limits=c(0, 80), low="#56B1F7", high="#132B43") +
+  guides(fill = guide_legend()) +
+  ggtitle("Percent of Individuals below Poverty Level") +
+  theme_nothing(legend=TRUE) +
+  coord_map()
+```
+
+### The End 
+
+I enjoyed learning US Census data, and learning about maps and how to make them is very rewarding. `tigris` and `acs14lite` packages developed by Kyle Walker (https://walkerke.github.io/) are essential for this small project. I look forward to mapping Canadian census data later this year. 
+
