@@ -34,7 +34,7 @@ First, [apply API key from the US Census Bureau](http://api.census.gov/data/key_
 
 ```{r}
 library(acs14lite)
-census_api_key <- "612cc2cb87caa662809678e821c93a275ef6e811"
+census_api_key <- "Your_Census_Api_Key"
 set_api_key(census_api_key)
 ```
 
