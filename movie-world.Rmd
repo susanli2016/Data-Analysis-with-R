@@ -1,0 +1,243 @@
+---
+output:
+
+  html_document:
+
+    smart: false
+---
+
+It's Movie Time! 
+==========================================================================
+
+Susan Li
+
+April 7, 2017
+
+We are movie-goers, we have heavily relied on how many gold stars a movie gets before we decide whether we watch it or not. I have to admit that we miss good movies sometimes because some critics reviews are controversial, another time we regret after watching a movie because it was not what we expected.
+
+When I was browsing Kaggle dataset, I came across an [IMDB movie dataset](https://www.kaggle.com/datasets) which contains 5043 movies and 28 variables. Looking at the variables, I think I might be able to find something interesting. 
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(Hmisc)
+library(psych)
+```
+
+```{r}
+movie <- read.csv('movie.csv', stringsAsFactors = F)
+str(movie)
+dim(movie)
+summary(movie)
+```
+
+### Always start from the distribution of the data. 
+
+```{r}
+ggplot(aes(x = num_critic_for_reviews), data = movie) + geom_histogram(bins = 20, color = 'white') + ggtitle('Histogram of Number of reviews')
+summary(movie$num_critic_for_reviews)
+```
+
+The distribution of the number of reviews is right skewed. Among these 5043 movies, the minimum number of review was 1 and the maximum number of reviews was 813. Majority of the movies received less than 200 reviews. 
+
+```{r}
+ggplot(aes(x = imdb_score), data = movie) + geom_histogram(bins = 20, color = 'white') + ggtitle('Histogram of Scores')
+summary(movie$imdb_score)
+```
+
+The score distribution is left skewed, with minimum score at 1.60 and maximum score at 9.50.
+
+```{r}
+ggplot(aes(x = title_year), data = movie) + geom_histogram(color='white') +
+  ggtitle('Histogram of Title Year')
+```
+
+Most of the movies in the dataset were produced after 2000.
+
+```{r}
+boxplot(imdb_score ~ title_year, data=movie, col='indianred')
+title("IMDB score vs Title year")
+```
+
+However, the movies with the highest scores were produced in the 1950s, and there have been significant amount of low score movies came out in the recent years. 
+
+### Which countries produced the most movies and which countries have the highest scores?
+
+```{r}
+country_group <- group_by(movie, country)
+movie_by_country <- summarise(country_group,
+                               mean_score = mean(imdb_score),
+                               n = n()) 
+ggplot(aes(x = country, y = n, fill = country), data = movie_by_country) + geom_bar(stat = 'identity') + theme(legend.position = "none", axis.text=element_text(size=6)) +
+  coord_flip() + ggtitle('Countries vs Number of Movies')
+```
+
+The USA produced the most number of movies. 
+
+```{r}
+ggplot(aes(x = country, y = mean_score, fill = country), data = movie_by_country) + geom_bar(stat = 'identity') + theme(legend.position = "none", axis.text=element_text(size=7)) +
+  coord_flip() + ggtitle('Countries vs IMDB Scores')
+```
+
+But that does not mean their movie are all good quality. Kyrgyzstan, Libya and United Arab Emirates might have the highest average scores.
+
+### How about directors?
+
+```{r}
+director_group <- group_by(movie, director_name, genres)
+movie_by_director <- summarise(director_group,
+                               mean_score = mean(imdb_score))
+```
+
+```{r}
+movie_by_director <- movie_by_director[67:4530,]
+movie_by_director <- movie_by_director[with(movie_by_director, order(-mean_score)), ]
+movie_by_director <- head(movie_by_director, 20)
+ggplot(aes(x = mean_score, y = director_name), data = movie_by_director) +
+  geom_point(aes(color = genres), size = 2) + xlab("Mean Score") + 
+  ylab("Director Name")+ theme_minimal() + ggtitle('Director, Genres & Scores')
+```
+
+### Multiple Linear Regression - Variable Selection
+
+Time to do something serious work, I intend to predict IMDB scores from the other variables using multiple linear regression model. Because regression can't deal with missing values, I will eliminate all missing values.  
+
+```{r}
+movie$imdb_score <- as.numeric(impute(movie$imdb_score, mean))
+movie$num_critic_for_reviews <- as.numeric(impute(movie$num_critic_for_reviews, mean))
+movie$duration <- as.numeric(impute(movie$duration, mean))
+movie$director_facebook_likes <- as.numeric(impute(movie$director_facebook_likes, mean))
+movie$actor_3_facebook_likes <- as.numeric(impute(movie$actor_3_facebook_likes, mean))
+movie$actor_1_facebook_likes <- as.numeric(impute(movie$actor_1_facebook_likes, mean))
+movie$gross <- as.numeric(impute(movie$gross, mean))
+movie$cast_total_facebook_likes <- as.numeric(impute(movie$cast_total_facebook_likes, mean))
+movie$facenumber_in_poster <- as.numeric(impute(movie$facenumber_in_poster, mean))
+movie$budget <- as.numeric(impute(movie$budget, mean))
+movie$title_year <- as.numeric(impute(movie$title_year, median))
+movie$actor_2_facebook_likes <- as.numeric(impute(movie$actor_2_facebook_likes, mean))
+movie$aspect_ratio <- as.numeric(impute(movie$aspect_ratio, mean))
+```
+
+```{r}
+summary(movie)
+```
+
+Now I have got rid of all 'NA's. And I picked the following variables as potential candidates for the IMDB score predicators.
+
+* num_critic_for_reviews
+* duration
+* director_facebook_likes
+* actor_1_facebook_likes
+* gross
+* cast_total_facebook_likes
+* facenumber_in_poster
+* budget 
+* movie_facebook_likes
+
+Select a subset of numeric variables for regression modelling.
+
+```{r}
+movie_sub <- subset(movie, select = c(num_critic_for_reviews, duration, director_facebook_likes, actor_1_facebook_likes, gross, cast_total_facebook_likes, facenumber_in_poster, budget, movie_facebook_likes, imdb_score))
+```
+
+```{r}
+pairs.panels(movie_sub, col='red')
+```
+
+### Construct the model
+
+Split data into training and testing.
+
+```{r}
+set.seed(2017)
+train_size <- 0.8 
+train_index <- sample.int(length(movie_sub$imdb_score), length(movie_sub$imdb_score) * train_size)
+train_sample <- movie_sub[train_index,]
+test_sample <- movie_sub[-train_index,]
+```
+
+### Fit the model 
+
+I am trying out a stepwise selection of variables by backwards elimination. So I start with all candidate varibles and elimiate one at a time.
+
+```{r}
+fit <- lm(imdb_score ~ num_critic_for_reviews + duration +    director_facebook_likes + actor_1_facebook_likes + gross + cast_total_facebook_likes + facenumber_in_poster + budget + movie_facebook_likes, data=train_sample)
+summary(fit) 
+```
+
+I am going to eliminate the variables that has little value, - gross and budget, one at a time, and fit it again.
+
+```{r}
+fit <- lm(imdb_score ~ num_critic_for_reviews + duration + budget +   director_facebook_likes + actor_1_facebook_likes + cast_total_facebook_likes + facenumber_in_poster + movie_facebook_likes, data=train_sample)
+summary(fit) 
+```
+
+```{r}
+fit <- lm(imdb_score ~ num_critic_for_reviews + duration +   director_facebook_likes + actor_1_facebook_likes + cast_total_facebook_likes + facenumber_in_poster + movie_facebook_likes, data=train_sample)
+summary(fit) 
+```
+
+From the fitted model, I find that the model is significant since the p-value is very small. The "cast_total_facebook_likes" and "facenumber_in_poster" has negative weight. This model has multiple R-squared score of 0.143, meaning that around 14.3% of the variability can be explained by this model.
+
+Let me make a few plots of the model I arrived at.
+
+```{r}
+plot(fit)
+```
+
+If I consider IMDB scores of all movies in the dataset, it is a non-linear fit, it has a small degree of nonlinearity.
+
+This charts shows how all of the examples of residuals compare against theoretical distances from the model. I can see I have a bit problems here because some of the observations are not neatly fit the line. 
+
+This chart shows the distribution of residuals around the linear model in relation to the IMDB scores of all movies in my data. The higher the score, the less movies, and most movies are in the lower or median score range.
+
+This chart identifies all extrme values, but I don't see any extrme value has huge impact on my model. 
+
+At this point, I think this model is as good as I can get. Let's evaluate it. 
+
+```{r}
+train_sample$pred_score <- predict(fit, newdata = subset(train_sample, select=c(imdb_score, num_critic_for_reviews, duration, director_facebook_likes, actor_1_facebook_likes, cast_total_facebook_likes, facenumber_in_poster, movie_facebook_likes)))
+test_sample$pred_score <- predict(fit, newdata = subset(test_sample, select=c(imdb_score, num_critic_for_reviews, duration, director_facebook_likes, actor_1_facebook_likes, cast_total_facebook_likes, facenumber_in_poster, movie_facebook_likes)))
+```
+
+The theoretical model performance is defined here as R-Squared
+
+```{r}
+summary(fit)
+```
+
+Check how good the model is on the training set.
+
+```{r}
+train_corr <- round(cor(train_sample$pred_score, train_sample$imdb_score), 2)
+train_rmse <- round(sqrt(mean((train_sample$pred_score - train_sample$imdb_score)^2)))
+train_mae <- round(mean(abs(train_sample$pred_score - train_sample$imdb_score)))
+c(train_corr^2, train_rmse, train_mae)
+```
+
+The correlation between predicted score and actual score for the training set is 14.44%, which is cery close to theoretical R-Squared for the model, this is good news. However, on average, on the set of the observations I have previously seen, I am going to make 1 score difference when estimating. 
+
+Check how good the model is on the test set.
+
+```{r}
+test_corr <- round(cor(test_sample$pred_score, test_sample$imdb_score), 2)
+test_rmse <- round(sqrt(mean((test_sample$pred_score - test_sample$imdb_score)^2)))
+test_mae <- round(mean(abs(test_sample$pred_score - test_sample$imdb_score)))
+c(test_corr^2, test_rmse, test_mae)
+```
+
+This result is not bad, The results from test set are not far from the results of the training set. 
+
+### Conclusion
+
+* The most important factor that affect movie score is the duration, the longer the movie, the higher the sore will be. 
+* The number of critic reviews is important, the more reviews a movie receives, the higher the score will be.
+* The face number in poster has a negative effect to the movie score. The more faces in a movie poster, the lower the score will be. 
+
+### The End 
+
+I hope movie will be the same after I learn how to analyze movie data. Apprécier le film!
