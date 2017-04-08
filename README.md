@@ -10,4 +10,5 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [A Data Analysis of the 2016 Boston Marathon Finishers](http://rpubs.com/susan_li/boston-marathon)
 * [Text Mining - The Latest Trump's Tweets](http://rpubs.com/susan_li/trump-tweets)
 * [Mapping Water Use in Toronto](http://rpubs.com/susan_li/toronto-water)
-* [Mapping Poverty in Boston]
+* [Mapping Poverty in Boston](https://susanli2016.github.io/Poverty-Boston/)
+* [Predict Movie Ratings](http://rpubs.com/susan_li/movie-time)
