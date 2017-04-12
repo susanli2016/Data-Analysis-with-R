@@ -12,3 +12,4 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Mapping Water Use in Toronto](http://rpubs.com/susan_li/toronto-water)
 * [Mapping Poverty in Boston](https://susanli2016.github.io/Poverty-Boston/)
 * [Predict Movie Ratings](http://rpubs.com/susan_li/movie-time)
+* [Exploring 2016 H-1B Visa Petitions](http://rpubs.com/susan_li/visa-petitions)
