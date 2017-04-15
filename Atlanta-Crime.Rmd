@@ -1,0 +1,154 @@
+---
+title: "Atlanta Crime Analysis Jan, 2016- Apr,2017"
+output: html_document
+---
+
+[Atlanta Police Department](http://opendata.atlantapd.org/Default.aspx)'s online historical crime database has data from 1/1/2009 and is updated weekly. For this analysis I will examine all crime data posted on the Atlanta Police Department  Open Data Portal from January 1, 2016 to April 7, 2017.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.width = 6, fig.height = 5, fig.align = "center")
+```
+
+```{r}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+
+```{r}
+at <- rbind(COBRA_YTD2017, COBRADATA2016)
+str(at)
+```
+
+The data contains 35064 crimes and 23 variables, and there are some wrangling need to do, such as remove the columns I don't need, omit 'NA's, convert the data to the right types. 
+
+```{r}
+at$MI_PRINX <- at$apt_office_prefix <- at$apt_office_num <- at$location <- at$dispo_code <- at$loc_type <- at$npu <- NULL
+library(chron)
+library(lubridate)
+at$lon <- at$x
+at$lat <- at$y
+at$occur_date <- mdy(at$occur_date)
+at$rpt_date <- mdy(at$rpt_date)
+at$occur_time <- chron(times=at$occur_time)
+at$lon <- as.numeric(at$lon)
+at$lat <- as.numeric(at$lat)
+at$x <- at$y <- NULL
+```
+
+```{r}
+library(xts)
+by_Date <- na.omit(at) %>% group_by(occur_date) %>% summarise(Total = n())
+tseries <- xts(by_Date$Total, order.by= by_Date$occur_date)
+library(highcharter)
+hchart(tseries, name = "Crimes") %>% 
+  hc_add_theme(hc_theme_darkunica()) %>%
+  hc_credits(enabled = TRUE, text = "Sources: Atlanta Police Department", style = list(fontSize = "12px")) %>%
+  hc_title(text = "Time Series of Atlanta Crimes") %>%
+  hc_legend(enabled = TRUE)
+```
+
+Crimes have decreased in the recentl months. 
+
+The number of crimes increased around April, July and September 2016.
+
+```{r}
+at$dayofWeek <- weekdays(as.Date(at$occur_date))
+at$hour <- sub(":.*", "", at$occur_time)
+at$hour <- as.numeric(at$hour)
+ggplot(aes(x = hour), data = at) + geom_histogram(bins = 24, color='white', fill='black') +
+  ggtitle('Histogram of Crime Time') + theme_fivethirtyeight()
+```
+
+The crime time distribution appears bimodal with peaking around midnight and again at the noon, then again between 6pm and 8pm.  
+
+```{r}
+by_neighborhood <- at %>% filter(!is.na(neighborhood)) %>%  group_by(neighborhood) %>% summarise(total=n()) %>% arrange(desc(total))
+hchart(by_neighborhood[1:20,], "column", hcaes(x = neighborhood, y = total, color = total)) %>%
+  hc_colorAxis(stops = color_stops(n = 10, colors = c("#440154", "#21908C", "#FDE725"))) %>%
+  hc_add_theme(hc_theme_darkunica()) %>%
+  hc_title(text = "Top 20 Neighborhood with most Crimes") %>%
+  hc_credits(enabled = TRUE, text = "Sources: Atlanta Police Department", style = list(fontSize = "12px")) %>%
+  hc_legend(enabled = FALSE)
+```
+
+Downtown and midtown are the most common locations where crimes take place, followed by Old Fourth Ward and West End. 
+
+```{r}
+by_crimeType <- at %>% group_by(`UC2 Literal`) %>% summarise(total=n()) %>% arrange(desc(total))
+hchart(by_crimeType, "column", hcaes(x = `UC2 Literal`, y = total, color = total)) %>%
+  hc_colorAxis(stops = color_stops(n = 10, colors = c("#440154", "#21908C", "#FDE725"))) %>%
+  hc_add_theme(hc_theme_darkunica()) %>%
+  hc_title(text = "Crime Types") %>%
+  hc_credits(enabled = TRUE, text = "Sources: Atlanta Police Department", style = list(fontSize = "12px")) %>%
+  hc_legend(enabled = FALSE)
+```
+
+larceny theft are the top crimes in Atlanta followed by aggravated assault
+
+### What days and times are especially dangerous?
+
+```{r}
+topCrimes <- subset(at, `UC2 Literal`=='LARCENY-FROM VEHICLE'|`UC2 Literal`=="LARCENY-NON VEHICLE"|`UC2 Literal`=="AUTO THEFT"|`UC2 Literal`=="BURGLARY-RESIDENCE")
+
+topCrimes$dayofWeek <- ordered(topCrimes$dayofWeek, 
+                                   levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+topCrimes <- within(topCrimes,  `UC2 Literal`<- factor(`UC2 Literal`, levels = names(sort(table(`UC2 Literal`), decreasing = T))))
+ggplot(data = topCrimes, aes(x = dayofWeek, fill = `UC2 Literal`)) + 
+  geom_bar(width = 0.9, position = position_dodge()) + ggtitle("Top Crimes by Day of Week") + 
+  labs(x = "Day of Week", y = "Number of crimes", fill = guide_legend(title = "Crime category")) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Among the high crime categories, larceny tend to increase on Fridays and Saturdays. while burglary residence generally occurred more often during the weekdays than the weekends. Auto theft were least reported on Thursdays and increase for the weekends.
+
+```{r}
+topLocations <- subset(at, neighborhood =="Downtown"|neighborhood =="Midtown" | neighborhood=="Old Fourth Ward" | neighborhood=="West End" | neighborhood=="Vine City" | neighborhood=="North Buckhead")
+topLocations <- within(topLocations,  neighborhood <- factor(neighborhood, levels = names(sort(table(neighborhood), decreasing = T))))
+topLocations$dayofWeek <- ordered(topLocations$dayofWeek, 
+                                   levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+ggplot(data = topLocations, aes(x = dayofWeek, fill = neighborhood)) + 
+  geom_bar(width = 0.9, position = position_dodge()) + ggtitle(" Top Crime Neighborhood by Day of Week") + 
+  labs(x = "Day of Week", y = "Number of crimes", fill = guide_legend(title = "Neighborhood")) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The number of crimes increased in downtown and decreased on Tuesdays. Crime distribution is fairly even throughout the week for Midtown and Old Fourth Ward. North Buckhead reported least crimes on Sundays. 
+
+```{r}
+topCrimes_1 <- topCrimes %>% group_by(`UC2 Literal`, hour) %>% 
+  summarise(total = n())
+ggplot(aes(x = hour, y = total), data = topCrimes_1) +
+  geom_point(colour="blue", size=1) +
+  geom_smooth(method="loess") +
+  xlab('Hour(24 hour clock)') +
+  ylab('Number of Crimes') +
+  ggtitle('Top Crimes Time of the Day') +
+  facet_wrap(~`UC2 Literal`)
+```
+
+The top crimes exhibit different sinusoid time-interval patterns. Larceny from vehicle declined around 5am and peaked in the evening, Larceny-non vehicle peaked around 3pm, Auto-theft had a steady increase during the day and peaked in the evening, burglary-residence happened more often in the late morning than in the evening.
+
+### Plot a location map of Crimes in Atlanta using stats$_$denisty layer.
+
+I want to plot the density of crime on a map of the area around downtown Atlanta. The first step is to get the map data, then create the map use the following:
+
+```{r}
+library(maps)
+library(ggmap)
+topCrimes$`UC2 Literal` <- factor(topCrimes$`UC2 Literal`, levels = c('LARCENY-FROM VEHICLE', "LARCENY-NON VEHICLE", "AUTO THEFT","BURGLARY-RESIDENCE"))
+
+atlanta <- get_map('atlanta', zoom = 14) 
+atlantaMap <- ggmap(atlanta, extent = 'device', legend = 'topleft')
+atlantaMap + stat_density2d(aes(x = lon, y = lat, 
+  fill = ..level.. , alpha = ..level..),size = 2, bins = 4, 
+  data = topCrimes, geom = 'polygon') + 
+  scale_fill_gradient('Crime\nDensity') +
+  scale_alpha(range = c(.4, .75), guide = FALSE) +
+  guides(fill = guide_colorbar(barwidth = 1, barheight = 8))
+```
+
+The density areas can be interpreted as follows: 
+
+all the shaded areas together contain 3/4 of the top crimes in the data. Each shade represents 1/4 of the top crimes in the data. The smaller the area of a particular shade, the higher the crime density.
+
+Remember that we are seeing crime data here, not arrest data, It would be more meaningful if the original dataset contains arrest information. I would be interested to see where more of the arrests are happening. 
