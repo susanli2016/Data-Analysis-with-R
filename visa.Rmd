@@ -233,9 +233,9 @@ visa_state$X <- NULL
 states_map <- map_data("state")
 ggplot(visa_state, aes(map_id = region)) + 
     geom_map(aes(fill = count), map = states_map) +
-    scale_fill_gradientn(colours=c("blue","green","yellow","red")) + 
+    scale_colour_brewer(palette='Greens') + 
     expand_limits(x = states_map$long, y = states_map$lat) +
-  xlab('longitude') + ylab('latitude') + ggtitle('State H-1B Visas Applications')
+  xlab('longitude') + ylab('latitude') + ggtitle('State H-1B Visa Applications')
 ```
 
 ### The End
