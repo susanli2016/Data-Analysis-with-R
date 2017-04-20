@@ -99,7 +99,7 @@ grid.arrange(p7, p8, p9, p10, ncol=2)
 grid.arrange(p11, p12, p13, p14, ncol=2)
 ```
 
-Most of the data was collected from the United States, so variable "native country" does not have effect in my analysis, I will exclude it from regression model. And all the other categorial variables seem to have reasonable variation, so will be kept. 
+Most of the data was collected from the United States, so variable "native country" does not have effect on my analysis, I will exclude it from regression model. And all the other categorial variables seem to have reasonable variation, so will be kept. 
 
 ```{r}
 income$native.country <- NULL
