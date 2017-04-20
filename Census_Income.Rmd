@@ -1,0 +1,183 @@
+---
+title: "Predict Income Level from Census Data"
+output: html_document
+---
+
+The data was extracted from  [1994 Census bureau database](https://www.census.gov/en.html). However, I downloaded from [Kaggle](https://www.kaggle.com/datasets) at [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets.html). 
+
+The data contains 32561 observations (people) and 15 variables. A high level summary of the data is below.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+income <- read.csv('adult.csv', na.strings = c('','?'))
+str(income)
+```
+
+Statistics summary after changing missing values to 'NA'.
+
+```{r}
+summary(income)
+```
+
+### Data Cleaning Process
+
+Check for 'NA' values and look how many unique values there are for each variable.
+
+```{r}
+sapply(income,function(x) sum(is.na(x)))
+```
+
+```{r}
+sapply(income, function(x) length(unique(x)))
+```
+
+```{r}
+library(Amelia)
+missmap(income, main = "Missing values vs observed")
+table (complete.cases (income))
+```
+
+Approximate 7%(2399/32561) of the total data has missing value. They are mainly in variables 'occupation', 'workclass' and 'native country'. I decided to remove those missing values because I don't think its a good idea to replace categorical values by imputing. 
+
+```{r}
+income <- income[complete.cases(income),]
+```
+
+### Explore Numeric Variables With Income Levels
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+p1 <- ggplot(aes(x=income, y=age), data = income) + geom_boxplot() + 
+  ggtitle('Age vs. Income Level')
+p2 <- ggplot(aes(x=income, y=education.num), data = income) + geom_boxplot() +
+  ggtitle('Years of Education vs. Income Level')
+p3 <- ggplot(aes(x=income, y=hours.per.week), data = income) + geom_boxplot() + 
+  ggtitle('Hours Per Week vs. Income Level')
+p4 <- ggplot(aes(x=income, y=capital.gain), data=income) + geom_boxplot() + 
+  ggtitle('Capital Gain vs. Income Level')
+p5 <- ggplot(aes(x=income, y=capital.loss), data=income) + geom_boxplot() +
+  ggtitle('Capital Loss vs. Income Level')
+p6 <- ggplot(aes(x=income, y=fnlwgt), data=income) + geom_boxplot() +
+  ggtitle('Final Weight vs. Income Level')
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol=3)
+```
+
+"Age", "Years of education" and "hours per week" all show significant variations with income level. Therefore, they will be kept for the regression analysis. "Final Weight" does not show any variation with income level, therefore, it will be excluded from the analysis. Its hard to see whether "Capital gain" and "Capital loss" have variation with Income level from the above plot, so I will keep them for now. 
+
+```{r}
+income$fnlwgt <- NULL
+```
+
+### Explore Categorical Variables With Income Levels
+
+```{r}
+library(dplyr)
+by_workclass <- income %>% group_by(workclass, income) %>% summarise(n=n())
+by_education <- income %>% group_by(education, income) %>% summarise(n=n())
+by_education$education <- ordered(by_education$education, 
+                                   levels = c('Preschool', '1st-4th', '5th-6th', '7th-8th', '9th', '10th', '11th', '12th', 'HS-grad', 'Prof-school', 'Assoc-acdm', 'Assoc-voc', 'Some-college', 'Bachelors', 'Masters', 'Doctorate'))
+by_marital <- income %>% group_by(marital.status, income) %>% summarise(n=n())
+by_occupation <- income %>% group_by(occupation, income) %>% summarise(n=n())
+by_relationship <- income %>% group_by(relationship, income) %>% summarise(n=n())
+by_race <- income %>% group_by(race, income) %>% summarise(n=n())
+by_sex <- income %>% group_by(sex, income) %>% summarise(n=n())
+by_country <- income %>% group_by(native.country, income) %>% summarise(n=n())
+
+p7 <- ggplot(aes(x=workclass, y=n, fill=income), data=by_workclass) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Workclass with Income Level') + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p8 <- ggplot(aes(x=education, y=n, fill=income), data=by_education) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Education vs. Income Level') + coord_flip()
+p9 <- ggplot(aes(x=marital.status, y=n, fill=income), data=by_marital) + geom_bar(stat = 'identity', position=position_dodge()) + ggtitle('Marital Status vs. Income Level') + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p10 <- ggplot(aes(x=occupation, y=n, fill=income), data=by_occupation) + geom_bar(stat = 'identity', position=position_dodge()) + ggtitle('Occupation vs. Income Level') + coord_flip()
+p11 <- ggplot(aes(x=relationship, y=n, fill=income), data=by_relationship) + geom_bar(stat = 'identity', position=position_dodge()) + ggtitle('Relationship vs. Income Level') + coord_flip()
+p12 <- ggplot(aes(x=race, y=n, fill=income), data=by_race) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Race vs. Income Level') + coord_flip()
+p13 <- ggplot(aes(x=sex, y=n, fill=income), data=by_sex) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Sex vs. Income Level')
+p14 <- ggplot(aes(x=native.country, y=n, fill=income), data=by_country) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Native Country vs. Income Level') + coord_flip()
+grid.arrange(p7, p8, p9, p10, ncol=2)
+grid.arrange(p11, p12, p13, p14, ncol=2)
+```
+
+Most of the data was collected from the United States, so variable "native country" does not have effect in my analysis, I will exclude it from regression model. And all the other categorial variables seem to have reasonable variation, so will be kept. 
+
+```{r}
+income$native.country <- NULL
+```
+
+```{r}
+income$income = as.factor(ifelse(income$income==income$income[1],0,1))
+```
+
+Convert income level to 0's and 1's,"<=50K" will be 0 and ">50K"" will be 1(binary outcome).
+
+### Model Fitting
+
+split the data into two chunks: training and testing set.
+
+```{r}
+train <- income[1:24000,]
+test <- income[24001:30162,]
+```
+
+Fit the model
+
+```{r}
+model <-glm(income ~.,family=binomial(link='logit'),data=train)
+summary(model)
+```
+
+Interpreting the results of the logistic regression model:
+
+1. "Age", "Hours per week", "sex", "capital gain" and "capital loss" are the most statistically significant variables. Their lowest p-values suggesting a strong association with the probability of wage>50K from the data.
+2. "Workclass", "education", "marital status", "occupation" and "relationship" are all across the table. so cannot be eliminated from the model. 
+3. "Race" category is not statistically significant and can be eliminated from the model. 
+
+Run the anova() function on the model to analyze the table of deviance.
+
+```{r}
+anova(model, test="Chisq")
+```
+
+The difference between the null deviance and the residual deviance indicates how the model is doing against the null model. The bigger difference, the better. From the above table we can see the drop in deviance when adding each variable one at a time. Adding age, workclass, education, marital status, occupation, relationship, race, sex, capital gain, capital loss and hours per week significantly reduces the residual deviance. education.num seem to have no effect. 
+
+### Apply model to the test set
+
+```{r}
+fitted.results <- predict(model,newdata=test,type='response')
+fitted.results <- ifelse(fitted.results > 0.5,1,0)
+misClasificError <- mean(fitted.results != test$income)
+print(paste('Accuracy',1-misClasificError))
+```
+
+The 0.84 accuracy on the test set is a very encouraging result. 
+
+At last, plot the ROC curve and calculate the AUC (area under the curve). The closer AUC for a model comes to 1, the better predictive ability.
+
+```{r}
+library(ROCR)
+p <- predict(model, newdata=test, type="response")
+pr <- prediction(p, test$income)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+The area under the curve corresponds the AUC.
+
+As a last step, as I have just learned, use the effects package to compute and plot all variables. 
+
+```{r}
+library(effects)
+plot(allEffects(model))
+```
+
+### The End
+
+I have been very caucious on removing variables because I don't want to compromise the data as I may end up removing valid information. As a result, I may have kept variables that I should have removed such as "education.num". 
+
+Reference:
+[r-bloggers](https://www.r-bloggers.com/how-to-perform-a-logistic-regression-in-r/)
