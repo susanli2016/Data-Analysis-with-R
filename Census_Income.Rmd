@@ -3,7 +3,7 @@ title: "Predict Income Level from Census Data"
 output: html_document
 ---
 
-The data was extracted from  [1994 Census bureau database](https://www.census.gov/en.html). However, I downloaded from [Kaggle](https://www.kaggle.com/datasets) at [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets.html). 
+The data was extracted from  [1994 Census bureau database](https://www.census.gov/en.html). However, I downloaded from [Kaggle](https://www.kaggle.com/datasets) at [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets.html). The prediction task is to determine whether a person makes over $50K a year.
 
 The data contains 32561 observations (people) and 15 variables. A high level summary of the data is below.
 
