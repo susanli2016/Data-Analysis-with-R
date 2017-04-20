@@ -177,7 +177,7 @@ plot(allEffects(model))
 
 ### The End
 
-I have been very caucious on removing variables because I don't want to compromise the data as I may end up removing valid information. As a result, I may have kept variables that I should have removed such as "education.num". 
+I have been very cautious on removing variables because I don't want to compromise the data as I may end up removing valid information. As a result, I may have kept variables that I should have removed such as "education.num". 
 
 Reference:
 [r-bloggers](https://www.r-bloggers.com/how-to-perform-a-logistic-regression-in-r/)
