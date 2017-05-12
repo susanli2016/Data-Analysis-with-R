@@ -1,0 +1,126 @@
+---
+title: "Clustering Wholesale Customers"
+output: html_document
+---
+
+I downloaded this wholesale customer dataset from [UCI Machine Learning Repository](http://archive.ics.uci.edu/ml/datasets/Wholesale+customers). The data set refers to clients of a wholesale distributor. It includes the annual spending in monetary units on diverse product categories.
+
+My goal today is to use various clustering techniques to segment customers. Clustering is an unsupervised learning algorithm that tries to cluster data based on their similarity. Thus, there is no outcome to be predicted, and the algorithm just tries to find patterns in the data.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+This is the head and structure of the original data
+
+```{r}
+customer <- read.csv('Wholesale.csv')
+head(customer)
+str(customer)
+```
+
+### K-Means Clustering
+
+Prepare the data for analysis. Remove the missing value and remove "Channel" and "Region" columns because they are not useful for clustering.
+
+```{r}
+customer1<- customer
+customer1<- na.omit(customer1)
+customer1$Channel <- NULL
+customer1$Region <- NULL
+```
+
+Standardize the variables.
+
+```{r}
+customer1 <- scale(customer1)
+```
+
+Determine number of clusters.
+
+```{r}
+wss <- (nrow(customer1)-1)*sum(apply(customer1,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(customer1, 
+  	centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+```
+
+The correct choice of k is often ambiguous, but from the above plot, I am going to try my cluster analysis with 6 clusters .
+
+Fit the model and print out the cluster means. 
+
+```{r}
+fit <- kmeans(customer1, 6) # fit the model
+aggregate(customer1,by=list(fit$cluster),FUN=mean) # get cluster means
+customer1 <- data.frame(customer1, fit$cluster) #append cluster assignment
+```
+
+Plotting the results.
+
+```{r}
+library(cluster)
+clusplot(customer1, fit$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+Interpretation of the results: With my analysis, more than 70% of information about the multivariate data is captured by this plot of component 1 and 2.
+
+### Outlier detection with K-Means
+
+First, the data are partitioned into k groups by assigning them to the closest cluster centers, as follows:
+
+```{r}
+customer2 <- customer[, 3:8]
+kmeans.result <- kmeans(customer2, centers=6)
+kmeans.result$centers
+```
+
+Then calculate the distance between each object and its cluster center, and pick those with largest distances as outliers.
+
+```{r}
+kmeans.result$cluster # print out cluster IDs 
+centers <- kmeans.result$centers[kmeans.result$cluster, ]
+distances <- sqrt(rowSums((customer2 - centers)^2)) # calculate distances
+outliers <- order(distances, decreasing=T)[1:5] # pick up top 5 distances
+print(outliers)
+```
+
+These are the outliers. Let me make it more meaningful.
+
+```{r}
+print(customer2[outliers,])
+```
+
+Much better!
+
+### Hierarchical Clustering
+
+First draw a sample of 40 records from the customer data, so that the clustering plot will not be over crowded. Same as before, variables Region and Channel are removed from the data. After that, I apply hierarchical clustering to the data.
+
+```{r}
+idx <- sample(1:dim(customer)[1], 40)
+customerSample <- customer[idx,]
+customerSample$Region <- NULL
+customerSample$Channel <- NULL
+```
+
+There are a wide range of hierarchical clustering methods, I heard Ward's method is a good appraoch, so try it out.
+
+```{r}
+d <- dist(customerSample, method = "euclidean") # distance matrix
+fit <- hclust(d, method="ward") 
+plot(fit) # display dendogram
+groups <- cutree(fit, k=6) # cut tree into 6 clusters
+# draw dendogram with red borders around the 6 clusters 
+rect.hclust(fit, k=6, border="red")
+```
+
+Let me try to interpret: At the bottom, I start with 40 data points, each assigned to separate clusters, two closest clusters are then merged till I have just one cluster at the top. The height in the dendrogram at which two clusters are merged represents the distance between two clusters in the data space. The decision of the number of clusters that can best depict different groups can be chosen by observing the dendrogram. 
+
+## The End 
+
+I reviewed K Means clustering and Hierarchical Clustering. As we have seen, from using clusters we can understand the portfolio in a better way. We can then build targeted strategy using the profiles of each cluster. 
+
+References: 
+
+[R and Data Mining](http://www.rdatamining.com/)
