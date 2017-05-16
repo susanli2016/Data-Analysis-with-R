@@ -1,0 +1,169 @@
+---
+title: "Predict House Sales Prices in Ames, Iowa"
+output: html_document
+---
+
+The [Ames Housing dataset](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) was downloaded from [kaggle](https://www.kaggle.com/c/house-prices-advanced-regression-techniques). It is a playground competition's dataset and my taske is to predict house price based on house-level features using multiple linear regression model in R.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+### Prepare the data
+
+```{r}
+library(Hmisc)
+library(psych)
+library(car)
+```
+
+```{r}
+house <- read.csv('house.csv')
+head(house)
+```
+
+Next, split the data into a training set and a testing set.
+
+```{r}
+set.seed(2017)
+split <- sample(seq_len(nrow(house)), size = floor(0.75 * nrow(house)))
+train <- house[split, ]
+test <- house[-split, ]
+dim(train)
+```
+
+The training set contains 1095 observations and 81 variables. To start, I will hypothesize the following subset of the variables as potential predicators.
+
+* salePrice - the property's sale price in dollars. This is the target variable that I am trying to predict.
+
+* OverallCond - Overall condition rating
+
+* YearBuilt - Original construction date
+
+* YearRemodAdd - Remodel data
+
+* BedroomAbvGr - Number of bedrooms above basement level
+
+* GrLivArea - Above grade (ground) living area square feet
+
+* KitchenAbvGr - Number of kitchens above grade
+
+* TotRmsAbvGrd - Total rooms above grade (does not include bathrooms)
+
+* GarageCars - Size of garage in car capacity
+
+* PoolArea - Pool area in square feet
+
+* LotArea - Lot size in square feet
+
+Construct a new data fram consisting solely of these variables.
+ 
+```{r}
+train <- subset(train, select=c(SalePrice, LotArea, PoolArea, GarageCars, TotRmsAbvGrd, KitchenAbvGr, GrLivArea, BedroomAbvGr, YearRemodAdd, YearBuilt, OverallCond))
+head(train)
+```
+
+Report variables with missing values.
+
+```{r}
+sapply(train, function(x) sum(is.na(x)))
+```
+
+Summary statistics
+
+```{r}
+summary(train)
+```
+
+Before fitting my regression model I want to investigate how the variables are
+related to one another.
+
+```{r}
+pairs.panels(train, col='red')
+```
+
+We can see some of the variables are very skewed. If we want to have a good regression model, the varaibles should be normal distributed. The variables should be independent and not correlated. "GrLivArea" and "TotRmsAbvGrd" clearly have a high correlation, I will need to deal with these. 
+
+### Fit the linear model
+
+```{r}
+fit <-  lm(SalePrice ~ LotArea + PoolArea + GarageCars + TotRmsAbvGrd + KitchenAbvGr + GrLivArea + BedroomAbvGr + YearRemodAdd + YearBuilt + OverallCond, data=train)
+summary(fit)
+```
+
+interprete the output:
+
+R-squred of 0.737 tells us that approximately 74% of variation in sale price can be explained by my model. 
+
+F-statistics and p-value show the overall significance test of my model.
+
+Residual standard error gives an idea on how far observed sale price are from the predicted or fitted sales price. 
+
+Intercept is the estimated sale price for a house with all the other variables at zero. It does not provide any meaningful interpretation. 
+
+The slope for "GrlivArea"(7.598e+01) is the effect of Above grade living area square feet on sale price adjusting or controling for the other variables, i.e we associate an increase of 1 square foot in "GrlivArea" with an increase of $75.98 in sale price adjusting or controlling for the other variables.
+
+### Stepwise Procedure
+
+Using backward elimination to remove the predictor with the largest p-value over 0.05. In this case, I will remove "PoolArea" first, then fit the model again.
+
+```{r}
+fit <-  lm(SalePrice ~ LotArea + GarageCars + TotRmsAbvGrd + KitchenAbvGr + GrLivArea + BedroomAbvGr + YearRemodAdd + YearBuilt + OverallCond, data=train)
+summary(fit)
+```
+
+After eliminating "PoolArea", R-Squared almost identical, Adjusted R-squared slightly improved. At this point, I think I can start building the model.
+
+However, as you have seen earlier, two variables - "GrLivArea" and "TotRmsAbvGrd" are highly correlated, the multicollinearity between "GrLivArea" and "TotRmsAbvGrd" means that we should not directly interpret "GrLivArea" as the effect of "GrLivArea" on sale price adjusting for "TotRmsAbvGrd" These two effects are somewhat bounded together.
+
+```{r}
+attach(train)
+cor(GrLivArea, TotRmsAbvGrd, method='pearson')
+```
+
+### Create a confidence interval for the model coefficients
+
+```{r}
+confint(fit, conf.level=0.95)
+```
+
+For example, from the 2nd model, I have estimated the slope for "GrLivArea" is 75.43. I am 95% confident that the true slope is between 66.42 and 84.43.
+
+### Check the diagnostic plots for the model
+
+```{r}
+plot(fit)
+```
+
+The relationship between predictor variables and an outcome variable is approximate linear. There are three extreme cases (outliers).
+
+It looks like I don't have to be concerned too much, although two observations numbered as 524 and 1299 look a little off.
+
+The distribution of residuals around the linear model in relation to the sale price. The most of the houses in the data in the lower and median price range, the higher price, the less observations. 
+
+This plot helps us to find influential cases if any. Not all outliers are influential in linear regression analysis. It looks like none of the outliers in my model are influential. 
+
+### Testing the prediction model
+
+```{r}
+test <- subset(test, select=c(SalePrice, LotArea, GarageCars, TotRmsAbvGrd, KitchenAbvGr, GrLivArea, BedroomAbvGr, YearRemodAdd, YearBuilt, OverallCond))
+prediction <- predict(fit, newdata = test)
+```
+
+Look at the first few values of prediction, and compare it to the values of salePrice in the test data set.
+
+```{r}
+head(prediction)
+```
+
+```{r}
+head(test$SalePrice)
+```
+
+At last, calculate the value of R-squared for the prediction model on the test data set. In general, R-squared is the metric for evaluating the goodness of fit of my model. Higher is better with 1 being the best.
+
+```{r}
+SSE <- sum((test$SalePrice - prediction) ^ 2)
+SST <- sum((test$SalePrice - mean(test$SalePrice)) ^ 2)
+1 - SSE/SST
+```
