@@ -148,7 +148,7 @@ tokens %>%
 
 This gives the most common words in the financial news articles associated with each of the six sentiments in the Loughran lexicon. Here I only get five sentiments, this indicates that there is no word can be associated with "superfluous" in recent Google finance news articles related to these four companies. 
 
-Now it makes much better sense and I can trust the results to count how frequency each sentiment was associated with each company in these articles.
+Now it makes much better sense and I can trust the results to count how frequently each sentiment was associated with each company in these articles.
 
 ```{r}
 sentiment_fre <- tokens %>%
