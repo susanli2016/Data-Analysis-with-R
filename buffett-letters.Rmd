@@ -1,0 +1,223 @@
+---
+title: "Text Mining 40 Years of Warren Buffett's Letters to Shareholders"
+output: html_document
+---
+
+Warren Buffett released the most recent version of his annual letter to Berkshire Hathaway shareholders a couple of months ago. After reading a post regarding a [sentiment analysis of Mr Warren Buffett’s annual shareholder letters](http://michaeltoth.me/sentiment-analysis-of-warren-buffetts-letters-to-shareholders.html),  and I am also learning text mining with R. I thought it is a great opportunity to apply my latest skills into practice, - text mining 40 years of Warren Buffett's letters to shareholders.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(pdftools)
+library(rvest)
+library(XML)
+library(stringr)
+library(ggthemes)
+```
+
+The code I used here to download all the letters were borrowed from [Michael Toth](http://michaeltoth.me/sentiment-analysis-of-warren-buffetts-letters-to-shareholders.html).
+
+```{r}
+urls_77_97 <- paste('http://www.berkshirehathaway.com/letters/', seq(1977, 1997), '.html', sep='')
+html_urls <- c(urls_77_97,
+               'http://www.berkshirehathaway.com/letters/1998htm.html',
+               'http://www.berkshirehathaway.com/letters/1999htm.html',
+               'http://www.berkshirehathaway.com/2000ar/2000letter.html',
+               'http://www.berkshirehathaway.com/2001ar/2001letter.html')
+
+letters_html <- lapply(html_urls, function(x) read_html(x) %>% html_text())
+
+# Getting & Reading in PDF Letters
+urls_03_16 <- paste('http://www.berkshirehathaway.com/letters/', seq(2003, 2016), 'ltr.pdf', sep = '')
+pdf_urls <- data.frame('year' = seq(2002, 2016),
+                       'link' = c('http://www.berkshirehathaway.com/letters/2002pdf.pdf', urls_03_16))
+
+download_pdfs <- function(x) {
+  myfile = paste0(x['year'], '.pdf')
+  download.file(url = x['link'], destfile = myfile, mode = 'wb')
+  return(myfile)
+}
+
+pdfs <- apply(pdf_urls, 1, download_pdfs)
+letters_pdf <- lapply(pdfs, function(x) pdf_text(x) %>% paste(collapse=" "))
+tmp <- lapply(pdfs, function(x) if(file.exists(x)) file.remove(x)) # Clean up directory
+
+# Combine all letters in a data frame
+letters <- do.call(rbind, Map(data.frame, year=seq(1977, 2016), text=c(letters_html, letters_pdf)))
+letters$text <- as.character(letters$text)
+```
+
+Now I am ready to use "unnest_tokens" to split the dataset(all the letters) into tokens and remove stop words.
+
+```{r}
+letter_words <- letters %>%
+  unnest_tokens(word, text) %>%
+  filter(str_detect(word, "[a-z']$"),
+         !word %in% stop_words$word)
+```
+
+### The most common words throughout the 40 years of letters.
+
+```{r}
+letter_words %>% 
+  count(word, sort=TRUE)
+```
+
+```{r}
+letter_words %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 600) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() + ggtitle("The Most Common Words in Buffett's Letters") + theme_minimal()
+```
+
+### The most common words each year
+
+```{r}
+words_by_year <- letter_words %>%
+  count(year, word, sort = TRUE) %>%
+  ungroup()
+words_by_year
+```
+
+### Sentiment by Year.
+
+Examine how often positive and negative words occurred in these letters. Which years were the most positive or negative overall?
+
+[AFINN](http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=6010) lexion provides a positivity score for each word, from -5 (most negative) to 5 (most positive). What I am doing here is to calculate the average sentiment score for each year. 
+
+```{r}
+letters_sentiments <- words_by_year %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(year) %>%
+  summarize(score = sum(score * n) / sum(n))
+
+letters_sentiments %>%
+  mutate(year = reorder(year, score)) %>%
+  ggplot(aes(year, score, fill = score > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  ylab("Average sentiment score") + 
+  ggtitle("Sentiment Score of Buffett's Letters to Shareholders 1977-2016") + theme_minimal()
+```
+
+Warren Buffett is known for his long-term, optimistic economic outlook. Only 1 out of 40 letters appeared negative. Berkshire’s loss in net worth during 2001 was $3.77 billion, in addition, 911 terrorist attack contributed to the negative sentiment score in that year's letter. 
+
+### Sentiment Analysis by Words.
+
+Examine the total positive and negative contributions of each word.
+
+```{r}
+contributions <- letter_words %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(word) %>%
+  summarize(occurences = n(),
+            contribution = sum(score))
+contributions
+```
+
+For example, word "abandon" appeared 4 times and contributed total -8 scores. 
+
+```{r}
+contributions %>%
+  top_n(25, abs(contribution)) %>%
+  mutate(word = reorder(word, contribution)) %>%
+  ggplot(aes(word, contribution, fill = contribution > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() + ggtitle('Words with the Most Contributions to Positive/Negative Sentiment Scores') + theme_minimal()
+```
+
+Word "outstanding" made the most positive contribution and word "loss" made the most negative contribution.
+
+```{r}
+sentiment_messages <- letter_words %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(year, word) %>%
+  summarize(sentiment = mean(score),
+            words = n()) %>%
+  ungroup() %>%
+  filter(words >= 5)
+sentiment_messages %>%
+  arrange(desc(sentiment))
+```
+
+Now we look for the words with the highest positive scores in each letter, here it is, "outstanding" appeared eight out of ten letters. 
+
+```{r}
+sentiment_messages %>% 
+  arrange(sentiment)
+```
+
+Unsurprisingly, seven out of ten letters, word "loss" secured the highest negative score.  
+
+From doing [text mining Google finance articles](https://susanli2016.github.io/Mining-Articles/) a few days ago, I have learned another sentiment lexicon - “loughran”, which was developed based on analyses of financial reports. The Loughran dictionary divides words into six sentiments: “positive”, “negative”, “litigious”, “uncertainty”, “constraining”, and “superfluous”. I can't wait to apply this dictionary to Buffett's letters. 
+
+```{r}
+letter_words %>%
+  count(word) %>%
+  inner_join(get_sentiments("loughran"), by = "word") %>%
+  group_by(sentiment) %>%
+  top_n(5, n) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip() +
+  facet_wrap(~ sentiment, scales = "free") +
+  ggtitle("Frequency of This Word in Buffett's Letters") + theme_minimal()
+```
+
+The assignments of words to sentments look reasonable. However, it removed "outstanding" and "superb" from the positive sentiment.
+
+### Relationship Between Words
+
+Now it is the most interesting part. By tokenizing text into consecutive sequences of words, we can examine how often one word is followed by another. We can then study the relationship between words. 
+
+In this case, defining a list of six words that are used in negative situation, such as “don't”, “not”, and “without”, and visualize the sentiment-associated words that most often followed them.
+
+```{r}
+letters_bigrams <- letters %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+letters_bigram_counts <- letters_bigrams %>%
+  count(year, bigram, sort = TRUE) %>%
+  ungroup() %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+```
+
+```{r}
+negate_words <- c("not", "without", "no", "can't", "don't", "won't")
+
+letters_bigram_counts %>%
+  filter(word1 %in% negate_words) %>%
+  count(word1, word2, wt = n, sort = TRUE) %>%
+  inner_join(get_sentiments("afinn"), by = c(word2 = "word")) %>%
+  mutate(contribution = score * nn) %>%
+  group_by(word1) %>%
+  top_n(10, abs(contribution)) %>%
+  ungroup() %>%
+  mutate(word2 = reorder(paste(word2, word1, sep = "__"), contribution)) %>%
+  ggplot(aes(word2, contribution, fill = contribution > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ word1, scales = "free", nrow = 3) +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  xlab("Words followed by a negation") +
+  ylab("Sentiment score * # of occurrences") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  coord_flip() + ggtitle("Words that contributed the most to sentiment when they followed a ‘negation'") + theme_minimal()
+```
+
+It looks like the largest sources of misidentifying a word as positive come from “no matter", "no better", "not worth", "not good", and the largest source of incorrectly classified negative sentiment is “no debt”, "no problem" and "not charged".
+
+Reference:
+
+[Text Mining with R](http://tidytextmining.com/)
