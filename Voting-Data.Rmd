@@ -20,7 +20,7 @@ library(ggthemes)
 library(tidyr)
 ```
 
-The package containes three data set. The first is the history of each country's vote, with more than 700,000 rows.
+The package contains three data set. The first is the history of each country's vote, with more than 700,000 rows.
 
 ```{r}
 un_votes
