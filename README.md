@@ -21,3 +21,7 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Exploring the BRFSS Data and Predict Stroke](https://susanli2016.github.io/brfss-data/)
 * [Clustering Wholesale Customers](https://susanli2016.github.io/Clustering-Customers/)
 * [Predict House Sale Prices in Ames, Iowa](https://susanli2016.github.io/Predict-House-Price/)
+* [Exploring and Clustering Happy Planet Index](https://susanli2016.github.io/Happy-Planet/)
+* [Text Mining Finance News of Four Big American Companies](https://susanli2016.github.io/Mining-Articles/)
+* [Text Mining 40 Years of Warren Buffett's Letters to Shareholders](https://susanli2016.github.io/Buffett-Letters/)
+* [Statistical Inference with the General Social Survey Data](https://susanli2016.github.io/Inferential-Statistics/)
