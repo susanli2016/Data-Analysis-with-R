@@ -1,0 +1,143 @@
+---
+title: "United Nations General Assembly Voting Data Analysis"
+output: html_document
+---
+
+I recently came across a R package called ["unvote"](https://cran.r-project.org/web/packages/unvotes/unvotes.pdf) that consists the voting history of countries in the United Nations General Assembly from 1946 to 2015. The packaged was developed by [David Robinson](http://varianceexplained.org/). 
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+### Explore the data
+
+```{r}
+library(ggplot2)
+library(unvotes)
+library(dplyr)
+library(lubridate)
+library(ggthemes)
+library(tidyr)
+```
+
+The package containes three data set. The first is the history of each country's vote, with more than 700,000 rows.
+
+```{r}
+un_votes
+```
+
+The second dataset contains information about each roll call vote, including the date, description, and relevant resolution that was voted on.
+
+```{r}
+un_roll_calls
+```
+
+The last data set contains relationships between each vote and six issues, they are "Palestinian conflict", "Nuclear weapons and nuclear material", "Arms control and disarmament", "Human rights", "Colonialism" and "Economic development".
+
+```{r}
+un_roll_call_issues
+```
+
+### First, which issue(issues) have been voted the most? 
+
+```{r}
+un_roll_call_issues %>% count(issue, sort=TRUE)
+```
+
+### How often a country voted "yes" from 1946 to 2015?
+
+```{r}
+by_country <- un_votes %>% group_by(country) %>% summarize(votes = n(),
+pct_yes = mean(vote == 'yes'))
+by_country
+```
+
+### Percentage yes vote high countries from 1946 to 2015
+
+```{r}
+arrange(by_country, desc(pct_yes))
+```
+
+### Percentage yes vote low countries from 1946 to 2015
+
+```{r}
+by_country[order(by_country$pct_yes),]
+```
+
+### Percentage yes vote high countries and years
+
+```{r}
+join1 <- un_votes %>% inner_join(un_roll_calls, by = 'rcid')
+by_country_year <- join1 %>% group_by(country, year=year(date)) %>% summarise(votes=n(), pct_yes = mean(vote=='yes'))
+arrange(by_country_year, desc(pct_yes))
+```
+
+### Percentage yes vote low countries and years
+
+```{r}
+by_country_year[order(by_country_year$pct_yes),]
+```
+
+### Let's look at three countries - Canada, US and UK's "Yes" vote trend in percent over year.
+
+```{r}
+countries <- c('Canada', 'United States of America', 'United Kingdom of Great Britain and Northern Ireland')
+by_country_year %>% filter(country %in% countries) %>% 
+  ggplot(aes(x=year, y=pct_yes, color=country)) + geom_line() + 
+  ylab("% of votes are 'Yes'") + ggtitle("Trend in percentage Yes Votes of Canada, US and UK 1946-2015") + theme_bw()
+```
+
+### Let's look at those six issues, how were they voted overtime by the above three countries? 
+
+```{r}
+join1 %>% filter(country %in% countries) %>% 
+  inner_join(un_roll_call_issues, by='rcid') %>% 
+  group_by(year=year(date), country, issue) %>% 
+  summarise(votes=n(), pct_yes=mean(vote=='yes')) %>% 
+  ggplot(aes(x=year, y=pct_yes, color=country)) + 
+  geom_point() + 
+  geom_smooth(se=FALSE) + facet_wrap(~issue) + ylab("% of votes are 'Yes'") +
+  ggtitle('Trend in Percentage Yes Votes by Issues for Canada, US and UK')
+```
+
+### Among these three countries, which countries voted "yes" the most and the least for what issues?
+
+```{r}
+join2 <- join1 %>% filter(country %in% countries) %>% 
+  inner_join(un_roll_call_issues, by='rcid') %>% 
+  group_by(country, issue) %>% 
+  summarise(votes=n(), pct_yes=mean(vote=='yes'))
+
+ggplot(aes(x=country, y=pct_yes, fill = issue), data = join2) + geom_bar(stat = 'identity', position = position_dodge()) + ggtitle('Canada, US, UK and the UN Issues')
+```
+
+### Let's try to estimate the probability of these three countries' changes in voting yes to the UN issues(i.e.whether there is a correlation between trend in year and percentage yes vote')
+
+```{r}
+us_by_year <- by_country_year %>% filter(country=='United States of America')
+ca_by_year <- by_country_year %>% filter(country=='Canada')
+uk_by_year <- by_country_year %>% filter(country=='United Kingdom of Great Britain and Northern Ireland')
+us_model <- lm(pct_yes ~ year, data=us_by_year)
+ca_model <- lm(pct_yes ~ year, data=ca_by_year)
+uk_model <- lm(pct_yes ~ year, data = uk_by_year)
+```
+
+```{r}
+library(tidyr)
+us_prob <- tidy(us_model) %>% filter(term=='year')
+ca_prob <- tidy(ca_model) %>% filter(term=='year')
+uk_prob <- tidy(uk_model) %>% filter(term=='year')
+us_prob
+ca_prob
+uk_prob
+```
+
+### Interpretation of the results
+
+* For the USA, the probablity of voting yes to UN issues will decrease 0.0071 percent in the coming years; trend in year and percentage yes vote are highly correlated.
+* For Canada, the probability of voting yes to UN issues will decrease 0.0002 percent in the coming years, and there is no correlation between trend in year and percentage yes vote.
+* For the UK, the probability of voting yes to UN issues will decrease 0.001 percent in the coming years, and there is no correlation between trend in year and percentage yes vote.
+
+### The End 
+
+I realized that this package allows me to perform several statistical analysises, save some for the next time.  
