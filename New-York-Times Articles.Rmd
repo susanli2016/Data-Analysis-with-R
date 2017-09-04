@@ -1,0 +1,197 @@
+---
+title: "Topic Modeling of New York Times Articles"
+output: html_document
+---
+
+In machine learning and natural language processing, A "topic" consists of a cluster of words that frequently occur together.[a topic model is a type of statistical model for discovering the abstract "topics" that occur in a collection of documents. Topic modeling is a frequently used text-mining tool for discovery of hidden semantic structures in a text body](https://en.wikipedia.org/wiki/Topic_model). Topic models can connect words with similar meanings and distinguish between uses of words with multiple meanings. 
+
+For this analysis, I downloaded 22 recent articles from business and technology sections at New York Times. I am using the collection of these 22 articles as my corpus for the topic modeling exercise. Therefore, each article is a document, with an unknown topic structure.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+## Load the library
+
+```{r}
+library(tm)
+library(topicmodels)
+library(SnowballC)
+library(tidytext)
+library(ggplot2)
+library(dplyr)
+```
+
+## Set the working directly.
+
+```{r}
+setwd('C:/Users/Susan/Documents/textmining')
+```
+
+## Load the files into corpus.
+
+```{r}
+filenames <- list.files(getwd(),pattern='*.txt')
+```
+
+## Read the files into a character vector.
+
+```{r}
+files <- lapply(filenames, readLines)
+```
+
+## Create corpus from the vector and inspect the 5th document.
+
+```{r}
+docs <- Corpus(VectorSource(files))
+writeLines(as.character(docs[[5]]))
+```
+
+# Data Preprocessing
+
+## Remove potential problematic symbols
+
+```{r}
+toSpace <- content_transformer(function(x, pattern) {return (gsub(pattern, '', x))})
+docs <- tm_map(docs, toSpace, '-')
+docs <- tm_map(docs, toSpace, ':')
+docs <- tm_map(docs, toSpace, '“')
+docs <- tm_map(docs, toSpace, '”')
+docs <- tm_map(docs, toSpace, "'")
+```
+
+## Remove punctuation, digits, stop words and white space.
+
+```{r}
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, removeWords, stopwords('english'))
+docs <- tm_map(docs, stripWhitespace)
+```
+
+## Define and remove custom stop words.
+
+```{r}
+myStopwords <- c('can','say','said','will','like','even','well','one', 'hour', 'also', 'take', 'well','now','new', 'use', 'the')
+docs <- tm_map(docs, removeWords, myStopwords)
+```
+
+## I decided to go further and remove everything that is not alpha or numerical symbol or space.
+  
+```{r}
+removeSpecialChars <- function(x) gsub("[^a-zA-Z0-9 ]","",x)
+docs <- tm_map(docs, removeSpecialChars)
+```
+
+## Transform to lowercase.
+
+```{r}
+docs <- tm_map(docs, content_transformer(tolower))
+```
+
+## Stem the document. It looks right after all the preprocessing. 
+
+```{r}
+docs <- tm_map(docs,stemDocument)
+writeLines(as.character(docs[[5]]))
+```
+
+## Right now this data frame is in a tidy form, with one-term-per-document-per-row. However, the topicmodels package requires a DocumentTermMatrix. We can create a DocumentTermMatrix like so:
+
+```{r}
+dtm <- DocumentTermMatrix(docs)
+dtm
+```
+
+# Topic Modeling
+
+Latent Dirichlet allocation (LDA) is one of the most common algorithms for topic modeling. LDA assumes that each document in a corpus contains a mix of topics that are found throughout the entire corpus. The topic structure is unknown - we can only observe the documents and words, not the topics themselves. Because the structure is unknown (also known as latent), this method seeks to infer the topic structure given the known words and documents.
+
+## Now We are ready to use the LDA() function from the topicmodels package. Let’s estimate an LDA model for these New york Times articles, setting k = 4, to create a 4-topic LDA model.
+
+```{r}
+nytimes_lda <- LDA(dtm, k = 4, control = list(seed = 1234))
+nytimes_lda
+```
+
+## Word-topic probabilities
+
+```{r}
+nytimes_topics <- tidy(nytimes_lda, matrix = "beta")
+nytimes_topics
+```
+
+This has turned the model into a one-topic-per-term-per-row format. For each combination the model has beta - the probability of that term being generated from that topic. For example, the term "adapt" has a 3.204101e-04 probability of being generated from topic 1, but a 8.591570e-103 probability of being generated from topic 2.
+
+## Let's visualize to understand the 4 topics that were extracted from these 22 documents.
+
+```{r}
+nytimes_top_terms <- nytimes_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+nytimes_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + ggtitle('Top terms in each LDA topic')
+```
+
+The 4 topics generally look to describe:
+
+1. iPhone and car businesses
+2. Tax, insurance coroporates in Houson
+3. Restaurant reservation, Google, and Uber's new CEO
+4. New technology and banking
+
+Let's set k = 9, see how do our results change?
+
+```{r}
+nytimes_lda <- LDA(dtm, k = 9, control = list(seed = 4321))
+nytimes_topics <- tidy(nytimes_lda, matrix = "beta")
+
+nytimes_top_terms <- nytimes_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+nytimes_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() + ggtitle('Top terms in each LDA topic')
+```
+
+From a quick view of the visualization it appears that the algorithm has done a decent job. The most common words in topic 9 include “uber” and “khosrowshahi", which suggests it is about the new Uber CEO Dara Khosrowshahi. The most common words in topic 5 include “insurance”, “houston”, and “corporate”, suggesting that this topic represents insurance related matters after Houston's Hurrican Harvey. One interesting observation is that the word "company" is common in 6 of the 9 topics.
+
+For the interest of space, I fit a model with 9 topics to this dataset. I encourage you to try a range of different values of k (topic) to find the optimal number of topics, to see whether the model's performace can be improved.  
+
+## Document-topic probabilities
+
+Besides estimating each topic as a mixture of words, topic modeling also models each document as a mixture of topics like so:
+
+```{r}
+nytimes_lda_gamma <- tidy(nytimes_lda, matrix = "gamma")
+nytimes_lda_gamma
+```
+
+Each of these values (gamma) is an estimated proportion of words from that document that are generated from that topic. For example, the model estimates that about 0.008% of the words in document 1 were generated from topic 1. To confirm this result, we check what the most common words in document 1 were: 
+
+```{r}
+tidy(dtm) %>%
+  filter(document == 1) %>%
+  arrange(desc(count))
+```
+
+This appears to be an article about teenagers' driving. Topic 1 does not have driving related topics, this means that the algorithm was right not to place this document in topic 1. 
+
+# The End
+
+Topic modeling can provide a way to get from raw text to a deeper understanding of unstructured data. However, we need to examine the results carefully to check that they make sense.
+
+So, try yourself, have fun, and start practicing those topic modeling skills!
