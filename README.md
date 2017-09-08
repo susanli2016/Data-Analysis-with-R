@@ -25,3 +25,5 @@ This repository contains my exploratory data analysis projects using R. All sour
 * [Text Mining Finance News of Four Big American Companies](https://susanli2016.github.io/Mining-Articles/)
 * [Text Mining 40 Years of Warren Buffett's Letters to Shareholders](https://susanli2016.github.io/Buffett-Letters/)
 * [Statistical Inference with the General Social Survey Data](https://susanli2016.github.io/Inferential-Statistics/)
+* [Modeling and Prediction for Movies](https://susanli2016.github.io/Modeling-Prediction-Movies/)
+* [Topic Modeling of New York Times Articles](https://susanli2016.github.io/New-York-Times-Articles/)
