@@ -1,0 +1,198 @@
+---
+title: "Text Analysis with Term Frequency for Mark Twain's Novels"
+output: html_document
+---
+
+Samuel Langhorne Clemens, otherwise known as Mark Twain, is one of the most important American writers."The Adventures of Tom Sawyer" is probably one of my most favorite books in all English literature. Happy to see that Twain's river novels remain required reading for young students, he is read more widely now than ever!
+
+Project Gutenberg offers over 53,000 free books. I will use four of Twain’s best novels for this analysis:
+
+* Roughing It
+* Life on the Mississippi
+* The Adventures of Tom Sawyer
+* Adventures of Huckleberry Finn
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+We will be using the following packages for the analysis:
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(ggplot2)
+library(tidytext)
+library(stringr)
+library(dplyr)
+library(tm)
+library(topicmodels)
+library(gutenbergr)
+theme_set(theme_minimal())
+```
+
+## Data preprocessing
+
+We’ll retrieve these four books using the gutenbergr package:
+
+```{r}
+books <- gutenberg_download(c(3177, 245, 74, 76), meta_fields = "title")
+```
+
+An important preprocessing step is tokenization. This is the process of splitting a text into individual words or sequences of words. The unnest_tokens function is a way to do just that. The result is converting the text column to be one-token-per-row like so:
+
+```{r}
+tidy_books <- books %>%
+  unnest_tokens(word, text)
+
+tidy_books
+```
+
+After removing stop words, we can find the most common words in all the four books as a whole.
+
+```{r}
+data("stop_words")
+cleaned_books <- tidy_books %>%
+  anti_join(stop_words)
+
+cleaned_books %>%
+  count(word, sort = TRUE)
+```
+
+### A little bit Sentiment
+
+Sentiment analysis is not the focus today, but since we are here already, why not have a quick look? 
+
+```{r}
+bing <- get_sentiments("bing")
+bing_word_counts <- tidy_books %>%
+  inner_join(bing) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+
+```{r}
+bing_word_counts %>%
+  filter(n > 100) %>%
+  mutate(n = ifelse(sentiment == 'negative', -n, n)) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ylab('Contribution to sentiment') + ggtitle('Most common positive and negative words')
+```
+
+We did not spot anomaly in the sentiment analysis results except word "miss' is identified as a negative word, actually, it is used as a title for the tough old spinster Miss Watson in "Adventures of Huckleberry Finn".
+
+### tf-idf
+
+To blatantly quote the [Wikipedia article](https://en.wikipedia.org/wiki/Tf%E2%80%93idf) on tf-idf:
+
+In text analysis, tf-idf, short for term frequency–inverse document frequency, is a numerical statistic that is intended to reflect how important a word is to a document in a collection or corpus.  It is often used as a weighting factor in information retrieval and text mining.
+
+For our purpose, we want to know the most important words(highest tf-idf) in Mark Twain's four books overall, and most important words(highest tf-idf) in each of these four books. Let's find out. 
+
+```{r}
+book_words <- cleaned_books %>%
+  count(title, word, sort = TRUE) %>%
+  ungroup()
+
+total_words <- book_words %>% 
+  group_by(title) %>% 
+  summarize(total = sum(n))
+
+book_words <- left_join(book_words, total_words)
+
+book_words
+```
+
+Terms with high tf-idf across all the four novels
+
+```{r}
+book_words <- book_words %>%
+  bind_tf_idf(word, title, n)
+
+book_words %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+```
+
+
+```{r}
+plot <- book_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+plot %>% 
+  top_n(20) %>%
+  ggplot(aes(word, tf_idf, fill = title)) +
+  geom_bar(stat = 'identity', position = position_dodge())+
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip() + ggtitle("Top tf-idf words in Mark Twain's Four Novels")
+```
+
+
+```{r}
+plot %>% 
+  group_by(title) %>% 
+  top_n(10) %>% 
+  ungroup %>%
+  ggplot(aes(word, tf_idf, fill = title)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~title, ncol = 2, scales = "free") +
+  coord_flip() + ggtitle('Top tf-idf words in each novel')
+```
+
+Each novel has its own highest tf-idf words. However, the language he used across these four novels are pretty similar, such as term "city" has high tf-idf in "Roughing it" and "Life on the Mississippi".
+
+### Term frequency 
+
+Just for the kicks, let's compare Mark Twain's works with those of Charles Dicken's. Let's get "A Tale of Two Cities”, “Great Expectations”, “A Christmas Carol in Prose; Being a Ghost Story of Christmas”, “Oliver Twist” and “Hard Times”.
+
+What are the most common words in these novels of Charles Dickens?
+
+```{r}
+dickens <- gutenberg_download(c(98, 1400, 46, 730, 786))
+tidy_dickens <- dickens %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+tidy_dickens %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+tidy_twains <- books %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+```
+
+
+```{r}
+frequency <- bind_rows(mutate(tidy_twains, author = "Mark Twain"),
+                       mutate(tidy_dickens, author = "Charles Dickens")) %>% 
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  count(author, word) %>%
+  group_by(author) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  spread(author, proportion) %>% 
+  gather(author, proportion, `Mark Twain`:`Charles Dickens`)
+```
+
+
+```{r}
+frequency$word <- factor(frequency$word, 
+                     levels=unique(with(frequency, 
+                                 word[order(proportion, word, 
+                                            decreasing = TRUE)])))
+frequency <- frequency[complete.cases(frequency), ]
+ggplot(aes(x = reorder(word, proportion), y = proportion, fill = author), 
+       data = subset(frequency, proportion>0.0025)) +
+  geom_bar(stat = 'identity', position = position_dodge())+
+  coord_flip() + ggtitle('Comparing the word frequencies of Mark Twain and Charles Dickens')
+```
+
+The top term for both author is the same - "time". Other than that, their language are very different. 
