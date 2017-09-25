@@ -215,6 +215,6 @@ plot(topRules, method = "grouped")
 
 In this post, we have learned how to Perform Market Basket Analysis in R and how to interpret the results. If you want to implement them in Python, [Mlxtend](http://rasbt.github.io/mlxtend/) is a Python library that has a an implementation of the Apriori algorithm for this sort of application. You can find an introduction tutorial [here](http://pbpython.com/market-basket-analysis.html). 
 
-If you would like the R Markdown file used to make this blog post, you can find here. 
+If you would like the R Markdown file used to make this blog post, you can find [here](https://github.com/susanli2016/Data-Analysis-with-R/blob/master/Market_Basket_Analysis.Rmd). 
 
 reference: [R and Data Mining](http://www.rdatamining.com/examples/association-rules)
