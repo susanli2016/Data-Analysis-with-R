@@ -1,0 +1,419 @@
+---
+title: "What I learned from Traffic Accidents Data"
+output: html_document
+---
+
+The National Highway Traffic Safety Administration (NHTSA) has some really cool data that they made public.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(XML)
+library(RCurl)
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+library(reshape)
+library(treemap)
+```
+
+```{r}
+theurl <- "Text_NLP_paper/FARS.html"
+file<-read_html(theurl)
+tables<-html_nodes(file, "table")
+table1 <- html_table(tables[1], fill = TRUE)
+```
+
+```{r}
+df <- as.data.frame(table1)
+df <- df[23:48, ]
+colnames(df) <- c('national', 2015, 2014, 2013, 2012, 2011, 2010, 2009, 2008, 2007, 2006, 2005, 2004, 2003, 2002, 2001, 2000, 1999, 1998, 1997, 1996, 1995, 1994)
+df <- df[-1, ]
+df <- df[,colSums(is.na(df))<nrow(df)]
+```
+
+
+```{r}
+df$`2015` <- gsub(",", "", df$`2015`)
+df$`2014` <- gsub(",", "", df$`2014`)
+df$`2013` <- gsub(",", "", df$`2013`)
+df$`2012` <- gsub(",", "", df$`2012`)
+df$`2011` <- gsub(",", "", df$`2011`)
+df$`2010` <- gsub(",", "", df$`2010`)
+df$`2009` <- gsub(",", "", df$`2009`)
+df$`2008` <- gsub(",", "", df$`2008`)
+df$`2007` <- gsub(",", "", df$`2007`)
+df$`2006` <- gsub(",", "", df$`2006`)
+df$`2005` <- gsub(",", "", df$`2005`)
+df$`2004` <- gsub(",", "", df$`2004`)
+df$`2003` <- gsub(",", "", df$`2003`)
+df$`2002` <- gsub(",", "", df$`2002`)
+df$`2001` <- gsub(",", "", df$`2001`)
+df$`2000` <- gsub(",", "", df$`2000`)
+df$`1999` <- gsub(",", "", df$`1999`)
+df$`1998` <- gsub(",", "", df$`1998`)
+df$`1997` <- gsub(",", "", df$`1997`)
+df$`1996` <- gsub(",", "", df$`1996`)
+df$`1995` <- gsub(",", "", df$`1995`)
+df$`1994` <- gsub(",", "", df$`1994`)
+```
+
+
+```{r}
+df$`2015` <- as.numeric(df$`2015`)
+df$`2014` <- as.numeric(df$`2014`)
+df$`2013` <- as.numeric(df$`2013`)
+df$`2012` <- as.numeric(df$`2012`)
+df$`2011` <- as.numeric(df$`2011`)
+df$`2010` <- as.numeric(df$`2010`)
+df$`2009` <- as.numeric(df$`2009`)
+df$`2008` <- as.numeric(df$`2008`)
+df$`2007` <- as.numeric(df$`2007`)
+df$`2006` <- as.numeric(df$`2006`)
+df$`2005` <- as.numeric(df$`2005`)
+df$`2004` <- as.numeric(df$`2004`)
+df$`2003` <- as.numeric(df$`2003`)
+df$`2002` <- as.numeric(df$`2002`)
+df$`2001` <- as.numeric(df$`2001`)
+df$`2000` <- as.numeric(df$`2000`)
+df$`1999` <- as.numeric(df$`1999`)
+df$`1998` <- as.numeric(df$`1998`)
+df$`1997` <- as.numeric(df$`1997`)
+df$`1996` <- as.numeric(df$`1996`)
+df$`1995` <- as.numeric(df$`1995`)
+df$`1994` <- as.numeric(df$`1994`)
+```
+
+```{r}
+df <- df[complete.cases(df), ]
+```
+
+
+```{r}
+df_long <- df  %>% gather(Year, Val, c(2:23))
+```
+
+```{r}
+df_long_total <- df_long[df_long$national=='Total**',]
+```
+
+```{r}
+df_long_total$national <- NULL
+```
+
+## Traffic fatalities in the United States have been trending downwards. Notably, fatalities in 2014(approximately less than 33,000) is far lower than the peak in 2005(more than 43,000).
+
+```{r} 
+ggplot(aes(x=Year, y=Val), data = df_long_total) + geom_line(size = 2.5, alpha = 0.7, color = "mediumseagreen", group=1) + 
+  geom_point(size = 0.5) + 
+  ggtitle('Total Number of Accidents and Fatalities in the US 1994 - 2015') +
+  ylab('count') +
+  xlab('Year') +
+  theme_economist_white()
+```
+
+## The above figure did not take into account the ever-increasing number of cars on the road. [Americans are driving more than ever before](http://www.npr.org/sections/thetwo-way/2017/02/21/516512439/record-number-of-miles-driven-in-u-s-last-year).
+
+```{r}
+df_long_travel <- df_long[df_long$national=='Vehicle Miles Traveled (Billions)',]
+```
+
+```{r}
+ggplot(aes(x=Year, y=Val), data = df_long_travel) + geom_line(size = 2.5, alpha = 0.7, color = "mediumseagreen", group=1) + 
+  geom_point(size = 0.5) + 
+  ggtitle('Total Vehicle Miles Traveled 1994 - 2015') +
+  ylab('Billion Miles') +
+  xlab('Year') +
+  theme_economist_white()
+```
+
+```{r}
+state = read.csv("state.csv")
+state <- state[-1, ]
+state$`2015` <- state$X2015
+state$`2014` <- state$X2014
+state$X2015 <- NULL
+state$X2014 <- NULL
+```
+
+## 2015 Traffic Fatalities by STATE and Percent Change from 2014
+
+### Texas led the nation with the most traffic fatalities in both 2014 and 2015.
+
+### The states that have the fewest traffic fatalities are also among those have the fewest residents, including the District of Columbia, followed by Rhode Island and Vermont.
+
+```{r}
+state <- state[c('State', 2015, 2014, 'Percent.Change')]
+newdata <- state[order(-state$`2015`),]
+newdata
+```
+
+
+```{r}
+kill_1994 <- read.csv('kill_1994.csv')
+kill_1995 <- read.csv('kill_1995.csv')
+kill_1996 <- read.csv('kill_1996.csv')
+kill_1997 <- read.csv('kill_1997.csv')
+kill_1998 <- read.csv('kill_1998.csv')
+kill_1999 <- read.csv('kill_1999.csv')
+kill_2000 <- read.csv('kill_2000.csv')
+kill_2001 <- read.csv('kill_2001.csv')
+kill_2002 <- read.csv('kill_2002.csv')
+kill_2003 <- read.csv('kill_2003.csv')
+kill_2004 <- read.csv('kill_2004.csv')
+kill_2005 <- read.csv('kill_2005.csv')
+kill_2006 <- read.csv('kill_2006.csv')
+kill_2007 <- read.csv('kill_2007.csv')
+kill_2008 <- read.csv('kill_2008.csv')
+kill_2009 <- read.csv('kill_2009.csv')
+kill_2010 <- read.csv('kill_2010.csv')
+kill_2011 <- read.csv('kill_2011.csv')
+kill_2012 <- read.csv('kill_2012.csv')
+kill_2013 <- read.csv('kill_2013.csv')
+kill_2014 <- read.csv('kill_2014.csv')
+kill_2015 <- read.csv('kill_2015.csv')
+```
+
+
+```{r}
+kill_full <- rbind(kill_1994, kill_1995, kill_1996, kill_1997, kill_1998, kill_1999, kill_2000, kill_2001, kill_2002, kill_2003, kill_2004, kill_2005, kill_2006, kill_2007, kill_2008, kill_2009, kill_2010, kill_2011, kill_2012, kill_2013, kill_2014, kill_2015)
+```
+
+```{r}
+kill_full <- kill_full[!grepl("Total", kill_full$killed),]
+kill_full <- kill_full[!grepl("Unknown", kill_full$killed),]
+```
+
+## Nationwide, motor vehicle crash fatalities were higher for males than females every year, more than double.
+
+```{r}
+ggplot(aes(x = year, y=count, fill=killed), data=kill_full) +
+  geom_bar(stat = 'identity', position = position_dodge()) + 
+  xlab('Year') +
+  ylab('Killed') +
+  ggtitle('Number of Persons Killed in Traffic Accidents by Gender 1994 - 2015') + theme_economist_white()
+```
+
+```{r}
+age_1994 <- read.csv('age_1994.csv')
+age_1995 <- read.csv('age_1995.csv')
+age_1996 <- read.csv('age_1996.csv')
+age_1997 <- read.csv('age_1997.csv')
+age_1998 <- read.csv('age_1998.csv')
+age_1999 <- read.csv('age_1999.csv')
+age_2000 <- read.csv('age_2000.csv')
+age_2001 <- read.csv('age_2001.csv')
+age_2002 <- read.csv('age_2002.csv')
+age_2003 <- read.csv('age_2003.csv')
+age_2004 <- read.csv('age_2004.csv')
+age_2005 <- read.csv('age_2005.csv')
+age_2006 <- read.csv('age_2006.csv')
+age_2007 <- read.csv('age_2007.csv')
+age_2008 <- read.csv('age_2008.csv')
+age_2009 <- read.csv('age_2009.csv')
+age_2010 <- read.csv('age_2010.csv')
+age_2011 <- read.csv('age_2011.csv')
+age_2012 <- read.csv('age_2012.csv')
+age_2013 <- read.csv('age_2013.csv')
+age_2014 <- read.csv('age_2014.csv')
+age_2015 <- read.csv('age_2015.csv')
+```
+
+```{r}
+age_full <- rbind(age_1994, age_1995, age_1996, age_1997, age_1998, age_1999, age_2000, age_2001, age_2002, age_2003, age_2004, age_2005, age_2006, age_2007, age_2008, age_2009, age_2010, age_2011, age_2012, age_2013, age_2014, age_2015)
+```
+
+## The age group of 25 to 34 had the highest number of fatalities.
+
+```{r}
+age_full$age <- ordered(age_full$age, levels = c('< 5', '5 -- 9', '10 -- 15', '16 -- 20', '21 -- 24', '25 -- 34', '35 -- 44', '45 -- 54', '55 -- 64', '65 -- 74', '> 74'))
+ggplot(aes(x = age, y=count), data =age_full) + geom_bar(stat = 'identity') +
+  xlab('Age') +
+  ylab('Number of Killed') +
+  ggtitle('Fatalities Distribution by Age Group 1994 - 2015') + theme_economist_white()
+```
+
+## from 2005 to 2015, fatalities increased only in two age groups; 55 to 64 and 65 to 74. Age group in 16 to 20 and 35 to 44 had the highest decrease in fatalities.
+
+```{r}
+ggplot(age_full, aes(x = year, y = count, colour = age)) + 
+  geom_line() +
+  geom_point() +
+  facet_wrap(~age) + xlab('Year') +
+  ggtitle('Traffic Fatalities by Age 1994 - 2015') + 
+  theme(legend.position="none")
+```
+
+
+```{r}
+time_1994 <- read.csv('time_1994.csv')
+time_1995 <- read.csv('time_1995.csv')
+time_1996 <- read.csv('time_1996.csv')
+time_1997 <- read.csv('time_1997.csv')
+time_1998 <- read.csv('time_1998.csv')
+time_1999 <- read.csv('time_1999.csv')
+time_2000 <- read.csv('time_2000.csv')
+time_2001 <- read.csv('time_2001.csv')
+time_2002 <- read.csv('time_2002.csv')
+time_2003 <- read.csv('time_2003.csv')
+time_2004 <- read.csv('time_2004.csv')
+time_2005 <- read.csv('time_2005.csv')
+time_2006 <- read.csv('time_2006.csv')
+time_2007 <- read.csv('time_2007.csv')
+time_2008 <- read.csv('time_2008.csv')
+time_2009 <- read.csv('time_2009.csv')
+time_2010 <- read.csv('time_2010.csv')
+time_2011 <- read.csv('time_2011.csv')
+time_2012 <- read.csv('time_2012.csv')
+time_2013 <- read.csv('time_2013.csv')
+time_2014 <- read.csv('time_2014.csv')
+time_2015 <- read.csv('time_2015.csv')
+```
+
+```{r}
+time_full <- rbind(time_1994, time_1995, time_1996, time_1997, time_1998, time_1999, time_2000, time_2001, time_2002, time_2003, time_2004, time_2005, time_2006, time_2007, time_2008, time_2009, time_2010, time_2011, time_2012, time_2013, time_2014, time_2015)
+```
+
+```{r}
+mdata <- melt(time_full, id='hours')
+```
+
+```{r}
+hour_group <- group_by(mdata, hours, variable)
+```
+
+```{r}
+hour_group$value <- as.numeric(as.factor(hour_group$value))
+```
+
+
+```{r}
+kill_by_hour_group <- summarise(hour_group, 
+                                sum_hour = sum(value))
+```
+
+From this treemap, we see 3pm to 5:59pm and 6pm to 8:59pm had the most fatalities. Let's dive it deeper. 
+
+```{r}
+treemap(kill_by_hour_group, index=c("hours","variable"), vSize="sum_hour", type="index", fontsize.labels=c(15,12), title='Fatalities by time of the day', fontcolor.labels=c("white","orange"), fontface.labels=c(2,1), bg.labels=c("transparent"),  align.labels=list(
+  c("center", "center"), c("right", "bottom")), overlap.labels=0.5, inflate.labels=F,
+)
+```
+
+The most accidents occured at Midnight to 2:59am on Saturdays and Sundays, let's dive even deeper to find out why. its the time people leave the bars. How many time do we still have to say, don't drink and drive? 
+
+```{r}
+ggplot(aes(x = variable, y = sum_hour, fill = hours), data = kill_by_hour_group) +
+  geom_bar(stat = 'identity', position = position_dodge()) +
+  xlab('Hours') +
+  ylab('Total Fatalities') +
+  ggtitle('Fatalities Distribution by Time of the Day and Day of the week 1994-2015') + theme_economist_white()
+```
+ 
+
+```{r}
+time_full_group <- group_by(time_full, hours)
+```
+
+```{r}
+time_full_by_group <- summarise(time_full_group,
+                               Sun = sum(Sunday),
+                               Mon = sum(Monday),
+                               Tue = sum(Tuesday),
+                               Wed = sum(Wednesday), 
+                               Thu = sum(Thursday), 
+                               Fri = sum(Friday),
+                               Sat = sum(Saturday))
+```
+
+
+```{r}
+al_1994 <- read.csv('al_1994.csv')
+al_1995 <- read.csv('al_1995.csv')
+al_1996 <- read.csv('al_1996.csv')
+al_1997 <- read.csv('al_1997.csv')
+al_1998 <- read.csv('al_1998.csv')
+al_1999 <- read.csv('al_1999.csv')
+al_2000 <- read.csv('al_2000.csv')
+al_2001 <- read.csv('al_2001.csv')
+al_2002 <- read.csv('al_2002.csv')
+al_2003 <- read.csv('al_2003.csv')
+al_2004 <- read.csv('al_2004.csv')
+al_2005 <- read.csv('al_2005.csv')
+al_2006 <- read.csv('al_2006.csv')
+al_2007 <- read.csv('al_2007.csv')
+al_2008 <- read.csv('al_2008.csv')
+al_2009 <- read.csv('al_2009.csv')
+al_2010 <- read.csv('al_2010.csv')
+al_2011 <- read.csv('al_2011.csv')
+al_2012 <- read.csv('al_2012.csv')
+al_2013 <- read.csv('al_2013.csv')
+al_2014 <- read.csv('al_2014.csv')
+al_2015 <- read.csv('al_2015.csv')
+```
+
+```{r}
+al_all <- rbind(al_1994, al_1995, al_1996, al_1997, al_1998, al_1999, al_2000, al_2001, al_2002, al_2003, al_2004, al_2005, al_2006, al_2007, al_2008, al_2009, al_2010, al_2011, al_2012, al_2013, al_2014, al_2015)
+```
+
+The percentage of alcohol-impaired driving fatalities is actually flat for the past over 10 years.
+
+```{r}
+al_all_by_bac <- al_all %>%
+  group_by(bac, year) %>%
+  summarize(n = n(), mean = mean(pct.of.killed))
+```
+
+```{r}
+ggplot(aes(x = year, y = mean, color = bac), data = al_all_by_bac) +
+  geom_jitter(alpha = 0.05) +
+  geom_smooth(method = 'loess') +
+  xlab('Year') +
+  ylab('Percentage of Killed') +
+  ggtitle('Fatalities and Blood Alcohol Concentration of Drivers 1994-2015') + theme_economist_white()
+```
+
+```{r}
+pair_1994 <- read.csv('pair_1994.csv')
+pair_1995 <- read.csv('pair_1995.csv')
+pair_1996 <- read.csv('pair_1996.csv')
+pair_1997 <- read.csv('pair_1997.csv')
+pair_1998 <- read.csv('pair_1998.csv')
+pair_1999 <- read.csv('pair_1999.csv')
+pair_2000 <- read.csv('pair_2000.csv')
+pair_2001 <- read.csv('pair_2001.csv')
+pair_2002 <- read.csv('pair_2002.csv')
+pair_2003 <- read.csv('pair_2003.csv')
+pair_2004 <- read.csv('pair_2004.csv')
+pair_2005 <- read.csv('pair_2005.csv')
+pair_2006 <- read.csv('pair_2006.csv')
+pair_2007 <- read.csv('pair_2007.csv')
+pair_2008 <- read.csv('pair_2008.csv')
+pair_2009 <- read.csv('pair_2009.csv')
+pair_2010 <- read.csv('pair_2010.csv')
+pair_2011 <- read.csv('pair_2011.csv')
+pair_2012 <- read.csv('pair_2012.csv')
+pair_2013 <- read.csv('pair_2013.csv')
+pair_2014 <- read.csv('pair_2014.csv')
+pair_2015 <- read.csv('pair_2015.csv')
+```
+
+```{r}
+pair_all <- rbind(pair_1994, pair_1995, pair_1996, pair_1997, pair_1998, pair_1999, pair_2000, pair_2001, pair_2002, pair_2003, pair_2004, pair_2005, pair_2006, pair_2007, pair_2008, pair_2009, pair_2010, pair_2011, pair_2012, pair_2013, pair_2014, pair_2015)
+```
+
+Midnight to 2:59am is the time people leave the bars. How many time do we still have to say, don't drink and drive?
+
+```{r}
+ggplot(aes(x = year, y = count, fill = hour), data = pair_all) +
+  geom_bar(stat = 'identity', position = position_dodge()) +
+  xlab('Year') +
+  ylab('Number of Fatalities') +
+  ggtitle('Fatal Crashes caused by Alcohol-Impaired Driving, by Time of Day 1994-2015') + theme_economist_white()
+```
+
+
