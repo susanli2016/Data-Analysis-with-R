@@ -1,0 +1,303 @@
+---
+title: "Tale of 1000 Crunchbase Startups"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+options(scipen = 999)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(lubridate)
+```
+
+
+```{r}
+investment <- read.csv('investments.csv', stringsAsFactors = F)
+company <- read.csv('companies.csv', stringsAsFactors = F)
+acquisition <- read.csv('acquisitions.csv', stringsAsFactors = F)
+```
+
+```{r}
+dim(investment)
+length(unique(investment$company_name))
+```
+
+# Investments 
+
+## Most of the fundings are around 50 - 60 million US Dollars
+
+```{r}
+investment <- na.omit(investment, cols="raised_amount_usd")
+```
+
+```{r}
+ggplot(aes(x = raised_amount_usd/1000000), data = investment) +
+  geom_histogram(binwidth = 0.08) + 
+  scale_x_log10() +
+  xlab('Million USD') +
+  ggtitle('Histogram of the Raised Amount') +
+  theme_economist_white()
+```
+
+## Top Funding Total Raised by Company, Category and Region. 
+
+There is no surprise that most of the top funded crunchbase startups are located in the United States, SF Bay Area in particular. And I am sure you are more or less familiar with some of those companies. 
+
+```{r}
+company_group <- group_by(investment, company_name, company_category_list, company_region)
+funding_by_company <- summarise(company_group, funding_sum = sum(raised_amount_usd))
+funding_by_company <- funding_by_company[order(funding_by_company$funding_sum, decreasing = TRUE),]
+funding_by_company_top20 <- head(funding_by_company, 20)
+```
+
+## Top 20 Funding Total raised by Company
+
+```{r}
+company_by_group <- group_by(investment, company_name)
+funding_by_company_group <- summarise(company_by_group, funding_sum = sum(raised_amount_usd))
+funding_by_company_group <- funding_by_company_group[order(funding_by_company_group$funding_sum, decreasing=TRUE), ]
+funding_by_company_group_top20 <- head(funding_by_company_group, 20)
+```
+
+```{r}
+ggplot(aes(x = reorder(company_name, funding_sum), y = funding_sum/1000000), data = funding_by_company_group_top20) +
+  geom_bar(stat = 'identity') +
+  xlab('Company') +
+  ylab('Million USD') +
+  ggtitle('Top 20 Total Funding Raised by Company') + coord_flip() + theme_economist_white()
+```
+
+## Top 20 Funding Total raised by Company Category
+
+It has been an exciting time to be a young biotech company. The venture funding boom In Biotechnology. 
+
+```{r}
+category_group <- group_by(investment, company_category_list)
+funding_by_category <- summarise(category_group, funding_sum = sum(raised_amount_usd))
+funding_by_category <- funding_by_category[order(funding_by_category$funding_sum, decreasing = TRUE), ]
+funding_by_category_top20 <- head(funding_by_category, 20)
+```
+
+```{r}
+ggplot(aes(x = reorder(company_category_list, funding_sum), y = funding_sum/1000000), data = funding_by_category_top20) +
+  geom_bar(stat = 'identity') +
+  xlab('Category') +
+  ylab('Million USD') +
+  ggtitle('Top 20 Total Funding Raised by Category') + coord_flip() + theme_economist_white()
+```
+
+## The top 15 cities for biotech venture funding
+
+Anyone looking to start a biotech company should pay close attention to this list.
+
+It's no surprise that Cambridge plus Boston should vie for top spot on the list of deals dollars. San Diego comes in a distant second. San Francisco, South San Francisco, Menlo Park, Hayward, Redwood City, and Mountain View all fit into the Bay Area roster.
+
+```{r}
+investments_bio <- investment[investment$company_category_list == 'Biotechnology', ] 
+```
+
+```{r}
+investments_bio$company_city[investments_bio$company_city==""] <- investments_bio$investor_city[investments_bio$company_city==""]
+```
+
+
+```{r}
+city_group <- group_by(investments_bio, company_city)
+funding_by_city_bio <- summarise(city_group, funding_sum=sum(raised_amount_usd))
+funding_by_city_bio <- funding_by_city_bio[order(funding_by_city_bio$funding_sum, decreasing = TRUE), ]
+funding_by_city_bio_top15 <- head(funding_by_city_bio, 15)
+```
+
+```{r}
+ggplot(aes(x = reorder(company_city, funding_sum), y = funding_sum/1000000), data = funding_by_city_bio_top15) +
+  geom_bar(stat = 'identity') +
+  xlab('Company City') +
+  ylab('Million USD') +
+  ggtitle('Top 15 Cities for Biotechnology Funding') + coord_flip() + theme_economist_white()
+```
+
+These top 15 cities accounted for almost half of all biotech venture cash gambled from 1977 to 2015. 
+
+## Top 15 Funding Total raised by Region
+
+```{r}
+investment$company_region[investment$company_region==""] <- investment$investor_region[investment$company_region==""]
+```
+
+```{r}
+region_group <- group_by(investment, company_region)
+funding_by_region <- summarise(region_group, funding_sum = sum(raised_amount_usd))
+funding_by_region <- funding_by_region[order(funding_by_region$funding_sum, decreasing = TRUE), ]
+funding_by_region_top15 <- head(funding_by_region, 15)
+```
+
+```{r}
+ggplot(aes(x = reorder(company_region, funding_sum), y = funding_sum/1000000), data = funding_by_region_top15) +
+  geom_bar(stat = 'identity') +
+  xlab('Company Region') +
+  ylab('Million USD') +
+  ggtitle('Top 15 Total Funding Raised by Company Region') + coord_flip() + theme_economist_white()
+```
+
+Beijing and Shanghai now among the top startup hubs, despite the fact that the Asian cities receiving 10 per cent lesser than Western and European counterparts in Accelerator funding. 
+
+It's no surprise to see that Beijing ranked 4th in crunchbase startup total funding raised as giants like Lenovo , Tencent, Alibaba and Baidu were born in this city.
+
+## Funding Rounds
+
+To those who aren't familiar with the field of entrepreneurship and early stage investing like me, a venture round is a type of funding round used for venture capital financing, by which startup companies obtain investment, generally from venture capitalists and other institutional investors. The availability of venture funding is among the primary stimuli for the development of new companies and technologies.
+
+Private equity typically refers to investment funds organized as limited partnerships that are not publicly traded and whose investors are typically large institutional investors, university endowments, or wealthy individuals. 
+
+Debt financing occurs when a firm raises money for working capital or capital expenditures by selling bonds, bills or notes to individuals and/or institutional investors.
+
+Post-IPO refers to the period after a company's initial public offering of stock, which is its debut in the equity financial market
+
+The term seed suggests that this is a very early investment, means to support the business until it can generate cash of its own, or until it is ready for further investments.
+
+```{r}
+funding_type_group <- group_by(investment, funding_round_type)
+funding_by_type <- summarise(funding_type_group, funding_sum = sum(raised_amount_usd))
+funding_by_type <- funding_by_type[order(funding_by_type$funding_sum, decreasing = TRUE), ]
+```
+
+```{r}
+ggplot(aes(x = reorder(funding_round_type, funding_sum),  y=funding_sum/1000000), data = funding_by_type) +
+  geom_bar(stat = 'identity') +
+  xlab('Funding_round_type') +
+  ylab('Million USD') +
+  ggtitle('Funding Round Type') + coord_flip() + theme_economist_white()
+```
+
+If you want to know where venture capital firms get their money, check out this post on [Quora](https://www.quora.com/Where-do-venture-capital-firms-get-their-money)
+
+# Top Funding Amount by Investor and Region
+
+12 out of 20 top investors are in SF Bay Area. 3 out of 20 top investors are in New York City Area. one from China, one from Moscow, one from Geneva, and one from Singapore.
+
+```{r}
+investor_group <- group_by(investment, investor_name, investor_region)
+funding_by_investor <- summarise(investor_group, funding_sum = sum(raised_amount_usd))
+funding_by_investor <- funding_by_investor[order(funding_by_investor$funding_sum, decreasing = TRUE), ]
+funding_by_investor_top20 <- head(funding_by_investor, 20)
+```
+
+```{r}
+ggplot(aes(x = reorder(investor_name, funding_sum),  y=funding_sum/1000000, fill = investor_region), data = funding_by_investor_top20) +
+  geom_bar(stat = 'identity') +
+  xlab('Investor') +
+  ylab('Funding Raised in Million USD') +
+  ggtitle('Funding by Investors and Region') + coord_flip() +
+  scale_fill_manual(values=c("purple","black","gray", "orange", "blue", "indianred", "yellow")) +
+  theme_economist_white()
+```
+
+# Acquisition
+
+For the standard VC, acquisitions are an important metric to measure. The money they invest in startups has to go back in the pot eventually-preferably at a high multiple.
+
+After studying the acquisition table, I found that the table includes failed acquisitions, that is, acquisitions that did not happen, such as:
+
+1. Pfizer and Allergan terminated their planned $150 billion merger after the Obama administration took aim at the deal that would have moved the biggest drug company in the U.S. to Ireland to lower its taxes.
+
+2. A US District Court ruling blocked the Anthem-Cigna Merger on anticompetitive grounds, and Cigna Corp called off its $48 billion merger agreement with Anthem Inc. 
+
+3. After the Department of Justice planned to file an antitrust lawsuit against Comcast and Time Warner Cable in an effort to block it, Comcase announced that it would withdraw its proposal to acquire Time Warner Cable.
+
+4. Aetna abandoned its planned $37 billion merger with Humana after the court blocked the transaction on antitrust grounds.
+
+5. Mylan failed in $26 billion takeover bid for Perrigo.
+
+Keeping this in mind, let's explore the acquisition data.
+
+## Acquisition price amount distribution
+
+Most of the acquisitions are around 100 million US Dollars(Remember, the date includes the high value unsuccessful deals). 
+
+```{r}
+acquisition_no_na <- na.omit(acquisition, cols="price_amount")
+```
+
+```{r}
+ggplot(aes(x = price_amount/1000000), data = acquisition_no_na) +
+  geom_histogram(binwidth = 0.08) + 
+  scale_x_log10() +
+  xlab('Million USD') +
+  ggtitle('Histogram of Acquision Price Amount in Million USD') +
+  theme_economist_white()
+```
+
+## Top acquisitions by Company and Acquirer.
+
+```{r}
+ac_company_group <- group_by(acquisition, company_name, acquirer_name, acquired_at)
+ac_by_company <- summarise(ac_company_group, price_sum = sum(price_amount))
+ac_by_company <- ac_by_company[order(ac_by_company$price_sum, decreasing = TRUE), ]
+ac_by_company_top20 <- head(ac_by_company, 20)
+```
+
+Remember, for the bove table, No.1, 9, 12 and 15 did not happen. 
+
+## How long does it take to be acquired?
+
+In our dataset, vast majority of the startups were acquired within 10 years of founding.
+
+```{r}
+company_new <- company[c('company_name', 'founded_at')]
+```
+
+```{r}
+company_acquire <- merge(company_new, acquisition, by='company_name')
+```
+
+```{r}
+company_acquire <- company_acquire[c('company_name', 'founded_at', 'acquired_at')]
+company_acquire <- company_acquire[complete.cases(company_acquire), ]
+```
+
+```{r}
+company_acquire$founded_at <- ymd(company_acquire$founded_at)
+company_acquire$acquired_at <- ymd(company_acquire$acquired_at)
+```
+
+```{r}
+company_acquire$period <- (company_acquire$acquired_at - company_acquire$founded_at) / 365
+```
+
+```{r}
+ggplot(aes(x = period), data = company_acquire) +
+  geom_histogram(binwidth = 0.5) + 
+  xlab('Year') +
+  scale_x_continuous(limits = c(0, 50), breaks = seq(0, 50, 5)) +
+  ggtitle('Histogram of How Long Does it take to be Acquired') +
+  theme_economist_white()
+```
+
+## Top Corporate VCs with the most number of Acquisitions
+
+At last, we charted out the top 10 CVCs (sorted by number of exits via acquisition). 
+
+```{r}
+acquirer_group <- group_by(acquisition, acquirer_name)
+ac_by_acquirer <- summarise(acquirer_group, n=n())
+ac_by_acquirer <- ac_by_acquirer[order(ac_by_acquirer$n, decreasing = TRUE), ]
+ac_by_acquirer_top10 <- head(ac_by_acquirer, 10)
+```
+
+
+```{r}
+ggplot(aes(x = reorder(acquirer_name, n),  y=n), data = ac_by_acquirer_top10) +
+  geom_bar(stat = 'identity') +
+  xlab('Corporate') +
+  ylab('Number of Acquisitions') +
+  ggtitle('Acquisitions by Corporate VCs') + coord_flip() + theme_economist_white()
+```
+
+## Methodology
+
+The above analysis and the dashboard in Tableau are based on the data downloaded from here, which collected information on global companies founded between 1977 and 2015. Companies are categorized by industry. The graphic may not include every company founded and funded during this time period. And as you have seen, there are some bias in the data too.
