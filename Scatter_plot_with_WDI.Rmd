@@ -1,0 +1,160 @@
+---
+title: "Scatter plot with WDI"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(WDI)
+```
+
+```{r}
+indicator <- WDI(country="all", indicator=c("EN.ATM.CO2E.KT", "EG.USE.PCAP.KG.OE","NY.GDP.MKTP.KD", "IT.CEL.SETS", "SP.POP.0014.TO.ZS", "SP.POP.0014.TO", "SP.POP.1564.TO.ZS", "SP.POP.1564.TO", "SP.POP.65UP.TO.ZS", "SP.POP.65UP.TO", "ST.INT.ARVL", "ST.INT.DPRT", "SP.DYN.LE00.FE.IN", "SP.DYN.LE00.MA.IN", "SP.DYN.CBRT.IN", "SH.XPD.TOTL.ZS", "SH.XPD.PCAP", "NY.GDP.PCAP.KD", "SP.DYN.IMRT.IN", "EN.ATM.CO2E.PC", "IT.CEL.SETS.P2"),
+start=2000, end=2017)
+```
+
+
+```{r}
+colnames(indicator) <- c("code","country","year", "CO2 Emissions", "Energy Use per Capita", "GDP", "Mobile Usage", "Population Age 0-14(%)", "Population Age 0-14(Total)", "Population Age 15-64(%)", "Population Age 15-64(Total)", "Population Age 65 and Above(%)", "Population Age 65 and Above(Total)", "Tourism Arrivals", "Tourism Departures", "Life Expectancy Female", "Life Expectancy Male", "Birth Rate(per 1000)", "Health Expenditure(% of GDP)", "Health Expenditure Per Capita", "GDP PER Capita", "Infant Mortality Rate(per 1000", "CO2 Emission per Capita", "Mobile Usage per 100")
+```
+
+```{r}
+write.csv(indicator, file = "indicator.csv",row.names=FALSE)
+```
+
+```{r}
+'IC.BUS.EASE.XQ' ('Ease of doing business((1=most business-friendly regulations)')
+'IC.REG.COST.PC.ZS'('Cost of business startup procedures % of GNI per Capita')
+'IC.REG.PROC' ('Days to register a business')
+'IC.TAX.TOTL.CP.ZS' ('Business Commercial Tax rate')
+'IC.TAX.DURS' ('Hours to do tax')
+'IQ.CPA.BREG.XQ' ('Business regulation environment rating(1=low 6=high)')
+'NY.GDP.PCAP.CD' ('GDP per Capita(current USD$)')
+'IC.BUS.NDNS.ZS' ('New business density(new registrations per 1,000 people ages 15-64)')
+
+
+```
+
+```{r}
+library(WDI)
+indicator1 <- WDI(country="all", indicator=c("NY.GDP.PCAP.CD", "IC.REG.COST.PC.ZS", "IC.REG.PROC", "IC.TAX.TOTL.CP.ZS", "IC.TAX.DURS", "IQ.CPA.BREG.XQ", "IC.BUS.EASE.XQ"),
+start=2016, end=2016)
+```
+
+```{r}
+colnames(indicator1) <- c("code","country","year", "GDP_per_capita", "Cost_start_Bus", "Days_reg_bus", "Bus_tax_rate", "Hours_do_tax", "Bus_env_rating", "Ease_Bus")
+```
+
+```{r}
+write.csv(indicator1, file = "indicator1.csv",row.names=FALSE)
+```
+
+```{r}
+library(WDI)
+indicator2 <- WDI(country="all", indicator=c("NY.GDP.PCAP.CD", "SP.POP.TOTL", "SP.DYN.LE00.IN"), start=2015, end=2015, extra = TRUE)
+
+drops <- c("iso2c","iso3c", "capital", "longitude", "latitude", "income", "lending")
+indicator2 <- indicator2[ , !(names(indicator2) %in% drops)]
+
+colnames(indicator2) <- c("country","year", "GDP_per_capita", "population_total", "life_expectancy", "region")
+
+indicator2 <- indicator2[-c(1, 2, 3, 4, 5, 6, 19, 66, 67, 159, 178, 179, 180, 181, 182, 201, 202, 203, 204, 205, 206, 207, 225, 226, 227, 228, 236, 237, 238, 239, 240, 241, 242, 243, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 262, 263), ]
+```
+
+```{r}
+options(scipen=999)
+
+radius <- sqrt( indicator2$population_total/ pi )
+symbols(indicator2$GDP_per_capita, indicator2$life_expectancy, circles=radius, inches=0.35, fg="white", bg="red", xlab="GDP per Capita(USD)", ylab="Life Expectancy(years)", main = "GDP per Capita vs. Life Expectancy 2015", ylim = c(0, 100))
+```
+
+```{r}
+options(scipen=999)
+plot(indicator2$GDP_per_capita, indicator2$life_expectancy, col = indicator2$region, pch = 16, cex = 2, ylim=c(0, 100), xlab='GDP per Capita(USD)', ylab="Life Expectancy(years)", main="GPD per Capita vs. Life Expectancy 2015")
+legend("bottomright", 
+       legend = c("Middle East & North Africa (all income levels)","South Asia","Latin America & Caribbean (all income levels)", "Europe & Central Asia (all income levels)", "Sub-Saharan Africa (all income levels)", "East Asia & Pacific (all income levels)", "North America", "<NA>"),
+       pch=16, pt.cex=1, cex=0.5, col = indicator2$region)
+```
+
+```{r}
+plot(indicator2$GDP_per_capita, indicator2$life_expectancy, col = indicator2$region, pch = 16, cex = 2, ylim=c(0, 100), xlab='GDP per Capita(USD)', ylab="Life Expectancy(years)", main="GPD per Capita vs. Life Expectancy 2015")
+legend("bottomright",
+  	c("Middle East & North Africa (all income levels)","South Asia","Latin America & Caribbean (all income levels)", "Europe & Central Asia (all income levels)", "Sub-Saharan Africa (all income levels)", "East Asia & Pacific (all income levels)", "North America"), col=indicator2$region)
+```
+
+```{r}
+plot(indicator2$GDP_per_capita, indicator2$life_expectancy, col = indicator2$region, pch = 16, cex = 2, ylim=c(0, 100), xlab='GDP per Capita(USD)', ylab="Life Expectancy(years)", main="GPD per Capita vs. Life Expectancy 2015")
+```
+
+```{r}
+plot(life_expectancy ~ GDP_per_capita , indicator2, ylim=c(0, 100), pch=16, col=rgb(0,0,1), xlab='GDP per Capita(USD)', ylab="Life Expectancy(years)", main="GPD per Capita vs. Life Expectancy 2015")
+```
+
+```{r}
+symbols(indicator2$GDP_per_capita,indicator2$life_expectancy,circles=indicator2$population_total,
+        fg = "gray30", main = "GDP per Capita vs. Life Expectancy 2015", ylim=c(0, 100))
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+ggplot(indicator2, aes(x=GDP_per_capita, y=life_expectancy, color=region, size=population_total)) +
+  geom_point() + 
+  xlab('GDP per Capita(USD)') +
+  ylab('Life Expectancy(years)') +
+  ggtitle('GDP per Capita vs. Life Expectancy 2015') +
+  theme_classic() + scale_color_brewer(palette="Dark2") +
+  scale_y_continuous(limits = c(0, 100))
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+ggplot(indicator2, aes(x = GDP_per_capita, y = life_expectancy, size = population_total/1000000, fill = region)) +
+  geom_point(shape = 21) +
+  ggtitle("GDP per Capita vs. Life Expectancy 2015") +
+  labs(x = "GDP per Capita(USD)", y = "Life Expectancy(years)") +
+  scale_y_continuous(limits = c(0, 90)) +
+  scale_size(range = c(1, 10)) +
+  labs(size = "Population(Millions)", fill = "Region") +
+  theme_classic()
+```
+
+```{r}
+library(ggvis)
+indicator2 %>% 
+  ggvis(x= ~GDP_per_capita, y= ~life_expectancy, fill= ~factor(region)) %>% 
+  layer_points(size=~population_total) %>%
+  add_legend(scales = "size", properties = legend_props(legend = list(y = 200))) %>%
+  scale_numeric("y", domain = c(0, 100), nice = FALSE)
+```
+
+```{r}
+indicator2 %>%
+  ggvis(~GDP_per_capita, ~life_expectancy, fill=~factor(region)) %>%
+  layer_points(size= ~population_total/1000000,opacity:=0.6) %>%
+  add_legend(scales = "size", properties = legend_props(legend = list(y = 200))) %>%
+  scale_numeric("y", domain = c(0, 90), nice = FALSE) %>%
+  add_axis("x", title = "GDP per Capita(USD)") %>%
+  add_axis("x", orient = "top", ticks = 0, title = "GDP per Capita vs. Life Expectancy 2015",
+           properties = axis_props(
+             axis = list(stroke = "white"),
+             labels = list(fontSize = 0)))
+```
+
+```{r}
+write.csv(indicator2, file = "indicator2.csv",row.names=FALSE)
+```
+
+```{r}
+library(plotly)
+
+p <- plot_ly(indicator2, x = ~GDP_per_capita, y = ~life_expectancy,
+  color = ~region, size = ~population_total) %>%
+  layout(yaxis = list(range = c(0, 90)))
+p
+```
