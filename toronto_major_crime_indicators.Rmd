@@ -1,0 +1,475 @@
+---
+title: "Toronto Major Crime Indicators(MCI) 2016"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(viridis)
+library(tidyr)
+library(cluster)
+library(ggmap)
+library(maps)
+```
+
+```{r}
+toronto <- read.csv('toronto_crime.csv')
+dim(toronto)
+```
+
+```{r}
+nrow(toronto)
+toronto <- subset(toronto, !duplicated(toronto$event_unique_id))
+nrow(toronto)
+```
+
+```{r}
+drops <- c("X", "Y", "Index_", "ucr_code", "ucr_ext", "reporteddate", "reportedmonth", "reportedday", "reporteddayofyear", "reporteddayofweek", "reportedhour", "occurrencedayofyear", "Division", "Hood_ID", "FID")
+
+toronto <- toronto[, !(names(toronto) %in% drops)]
+head(toronto)
+unique(toronto$occurrenceyear)
+unique(toronto$reportedyear)
+```
+
+Find something interesting? occurrence year range from 2000 to 2016, but report year is only 2016. This means people came to police to report incidents happened 16 years ago. Let's have a look how many late repoted incidents in our data.
+
+```{r}
+detach("package:plyr", unload=TRUE)
+```
+
+```{r}
+year_group <- group_by(toronto, occurrenceyear)
+crime_by_year <- summarise(year_group,
+                          n = n())
+crime_by_year
+```
+
+2 incidents occurred in 2000, 2 occurred in 2001 and so on. The vast majority of occurrences happened in 2016. So we are going to keep 2016 only.
+
+```{r}
+toronto <- toronto[toronto$occurrenceyear == 2016, ]
+```
+
+```{r}
+summary(toronto)
+```
+
+There are 4 missing values in each columns, let's remove them.
+
+```{r}
+toronto <- toronto[complete.cases(toronto), ]
+```
+
+After these, we do not need "reportedyear" column anymore. 
+
+```{r}
+toronto$reportedyear <- NULL
+```
+
+## Explore
+
+What is the most prominent major crime indicator in 2016?
+
+```{r}
+indicator_group <- group_by(toronto, MCI)
+crime_by_indicator <- summarise(indicator_group, n=n())
+crime_by_indicator <- crime_by_indicator[order(crime_by_indicator$n, decreasing = TRUE),]
+crime_by_indicator
+```
+
+```{r}
+ggplot(aes(x = reorder(MCI, n), y = n), data = crime_by_indicator) +
+  geom_bar(stat = 'identity', width = 0.5) +
+  geom_text(aes(label = n), stat = 'identity', data = crime_by_indicator, hjust = -0.1, size = 3.5) +
+  coord_flip() +
+  xlab('Major Crime Indicators') +
+  ylab('Number of Occurrences') +
+  ggtitle('Major Crime Indicators Toronto 2016') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Assault is the most prevalent form of violent crime in Toronto. What is assault? In criminal and civil law, assault is an attempt to initiate harmful or offensive contact with a person, or a threat to do so.
+
+What are the different types of assault? Which type is the worst?
+
+```{r}
+assault <- toronto[toronto$MCI == 'Assault', ]
+assault_group <- group_by(assault, offence)
+assault_by_offence <- summarise(assault_group, n=n())
+assault_by_offence <- assault_by_offence[order(assault_by_offence$n, decreasing = TRUE), ]
+assault_by_offence
+```
+
+```{r}
+ggplot(aes(x = reorder(offence, n), y = n), data = assault_by_offence) +
+  geom_bar(stat = 'identity', width = 0.6) +
+  geom_text(aes(label = n), stat = 'identity', data = assault_by_offence, hjust = -0.1, size = 3) +
+  coord_flip() +
+  xlab('Types of Assault') +
+  ylab('Number of Occurrences') +
+  ggtitle('Assault Crimes in Toronto 2016') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Not much information here, the top assault category is ... assault. I eventually learned different types of assault through Attorneys.com. 
+
+Let's look at Top offences then.
+
+```{r}
+offence_group <- group_by(toronto, offence)
+crime_by_offence <- summarise(offence_group, n=n())
+crime_by_offence <- crime_by_offence[order(crime_by_offence$n, decreasing = TRUE), ]
+crime_by_offence
+```
+
+```{r}
+ggplot(aes(x = reorder(offence, n), y = n), data = crime_by_offence) +
+  geom_bar(stat = 'identity', width = 0.7) +
+  geom_text(aes(label = n), stat = 'identity', data = crime_by_offence, hjust = -0.1, size = 2) +
+  coord_flip() +
+  xlab('Types of Offence') +
+  ylab('Number of Occurrences') +
+  ggtitle('Offence Types in Toronto 2016') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Assault being the most common offences followed by Break and Enter. So, what is break and enter? The offence of break and enter encompasses situations where the accused was or attempted to trespass on private property with an intent to commit an indictable offence. The most typical form of break and enter is a break into a commercial or private residence in order to steal property.This indicates that break and enter more likely to occure when there is no one at home. 
+
+How about crime by time of the day?
+
+```{r}
+hour_group <- group_by(toronto, occurrencehour)
+crime_hour <- summarise(hour_group, n=n())
+
+ggplot(aes(x=occurrencehour, y=n), data = crime_hour) + geom_line(size = 2.5, alpha = 0.7, color = "mediumseagreen", group=1) + 
+  geom_point(size = 0.5) + 
+  ggtitle('Total Crimes by Hour of Day in Toronto 2016') +
+  ylab('Number of Occurrences') +
+  xlab('Hour(24-hour clock)') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Okey,but what types of crime are most frequent at each hour?
+
+```{r}
+hour_crime_group <- group_by(toronto, occurrencehour, MCI)
+hour_crime <- summarise(hour_crime_group, n=n())
+
+ggplot(aes(x=occurrencehour, y=n, color=MCI), data = hour_crime) + 
+  geom_line(size=1.5) + 
+  ggtitle('Crime Types by Hour of Day in Toronto 2016') +
+  ylab('Number of Occurrences') +
+  xlab('Hour(24-hour clock)') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Assaults are the top crime all time, they happened more frequently in the evening time than during the day. On the other hand, break and enter happened more frequently during the day (when no one at home) than in the evenings. Robberies and auto thefts are more likely to happen at the night.They all make sense.  
+
+Where those crimes are most likely to occur in Toronto?
+
+```{r}
+location_group <- group_by(toronto, Neighbourhood)
+crime_by_location <- summarise(location_group, n=n())
+crime_by_location <- crime_by_location[order(crime_by_location$n, decreasing = TRUE), ]
+crime_by_location_top20 <- head(crime_by_location, 20)
+crime_by_location_top20
+```
+
+```{r}
+ggplot(aes(x = reorder(Neighbourhood, n), y = n), data = crime_by_location_top20) +
+  geom_bar(stat = 'identity', width = 0.6) +
+  geom_text(aes(label = n), stat = 'identity', data = crime_by_location_top20, hjust = -0.1, size = 3) +
+  coord_flip() +
+  xlab('Neighbourhoods') +
+  ylab('Number of Occurrences') +
+  ggtitle('Neighbourhoods with Most Crimes - Top 20') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+The most dangerous neighbourhood is ... Waterfront.The sprawling downtown catch-all includes not only the densely packed condoland but the boozy circus that is the entertainment district. The result: a staggering number of violent crimes and arsons.
+
+The Church-Yonge Corridor is popular with students because of the location of Ryerson at the heart of it, and it's the home of one side of Toronto's Gay Village, but the area has its share of crime problems. That's a bit of a shock given how close it is to downtown.
+
+Where are the safest neighbourhoods?
+
+```{r}
+tail(crime_by_location, 5)
+```
+
+Thinking of moving to Toronto? We picked your new homes for you! Forest Hill South is a safe gorgeous and affluent neighbourhood in Toronto that boast many beautiful homes, such as this mansion. 
+
+Let's find out neighbourhoods vs. offence types.
+
+```{r}
+offence_location_group <- group_by(toronto, Neighbourhood, offence)
+offence_type_by_location <- summarise(offence_location_group, n=n())
+offence_type_by_location <- offence_type_by_location[order(offence_type_by_location$n, decreasing = TRUE), ]
+offence_type_by_location_top20 <- head(offence_type_by_location, 20)
+
+ggplot(aes(x = Neighbourhood, y=n, fill = offence), data=offence_type_by_location_top20) +
+  geom_bar(stat = 'identity', position = position_dodge(), width = 0.8) +
+  xlab('Neighbourhood') +
+  ylab('Number of Occurrence') +
+  ggtitle('Top Offence Type vs. Neighbourhood Toronto 2016') + theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .4))
+```
+
+I did not expect something like this. It is not pretty. However, it did tell us that besides assaults, Church-Yonge Corridor and Waterfront had the most break and enter(Don't move there!). West Humber-Clairville had the most vehicle stolen crimes(Don't park your car there!).
+
+Let's try something different.
+
+```{r}
+crime_count <- toronto %>% group_by(occurrencemonth, MCI) %>% summarise(Total = n())
+crime_count$occurrencemonth <- ordered(crime_count$occurrencemonth, levels = c('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'))
+
+ggplot(crime_count, aes(occurrencemonth, MCI, fill = Total)) +
+  geom_tile(size = 1, color = "white") +
+  scale_fill_viridis()  +
+  geom_text(aes(label=Total), color='white') +
+  ggtitle("Major Crime Indicators by Month 2016") +
+  xlab('Month') +
+  theme(plot.title = element_text(size = 16), 
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Much better!
+
+Assault is the most common crime every month of the year with no exception. It appears that there were a little more assault accidents in May than the other months last year. 
+
+```{r}
+day_count <- toronto %>% group_by(occurrencedayofweek, MCI) %>% summarise(Total = n())
+
+ggplot(day_count, aes(occurrencedayofweek, MCI, fill = Total)) +
+  geom_tile(size = 1, color = "white") +
+  scale_fill_viridis()  +
+  geom_text(aes(label=Total), color='white') +
+  ggtitle("Major Crime Indicators by Day of Week 2016") +
+  xlab('Day of Week') +
+  theme(plot.title = element_text(size = 16), 
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+Saturdays and Sundays had more assaults than any other days, and had less theft over than any other days. Auto thieves are busy almost equally every day of the week.
+
+I was expecting to find seasonal crime patterns such as temperature changes and daylight hours might be associated with crime throughout the year, or  the beginning and end of the school year, are associated with variations in crime throughout the year. This one-year's worth of data is not enough to address my above concerns. I hope Toronto Police service will release more data via its open data portal. But this is a good start.
+
+## Homicide
+
+```{r}
+homicide <- read.csv('homicide.csv', stringsAsFactors = F)
+str(homicide)
+head(homicide)
+```
+
+```{r}
+homicide$Occurrence_Date <- as.Date(homicide$Occurrence_Date)
+```
+
+```{r}
+year_group <- group_by(homicide, Occurrence_year, Homicide_Type)
+homicide_by_year <- summarise(year_group, n=n())
+
+ggplot(aes(x = Occurrence_year, y=n, fill = Homicide_Type), data=homicide_by_year) +
+  geom_bar(stat = 'identity', position = position_dodge(), width = 0.8) +
+  xlab('Year') +
+  ylab('Number of Homicides') +
+  ggtitle('Homicide 2004-2016') + theme_bw() +
+  theme(plot.title = element_text(size = 16),
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+2005 is Toronto's "Year of Gun". Eleven years later and Toronto was experiencing another spike in gun-related homicide
+
+```{r}
+homicide$month <- format(as.Date(homicide$Occurrence_Date) , "%B")
+```
+
+
+```{r}
+homicide_count <- homicide %>% group_by(Occurrence_year, month) %>% summarise(Total = n())
+homicide_count$month <- ordered(homicide_count$month, levels = c('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'))
+ggplot(homicide_count, aes(Occurrence_year, month, fill = Total)) +
+  geom_tile(size = 1, color = "white") +
+  scale_fill_viridis()  +
+  geom_text(aes(label=Total), color='white') +
+  ggtitle("Homicides in Toronto (2004-2016)") +
+  xlab('Year') +
+  theme(plot.title = element_text(size = 16), 
+        axis.title = element_text(size = 12, face = "bold"))
+```
+
+It is worrisome to see that there is a significant increase in the total number of homicides in Toronto in 2016 compared to 2015. I hope we will have a better 2017. When I read Toronto ranked safest city in North America by the Economist, I felt much more safer. 
+
+## K-Mean Clustering
+
+```{r}
+by_groups <- group_by(toronto, MCI, Neighbourhood)
+groups <- summarise(by_groups, n=n())
+groups <- groups[c("Neighbourhood", "MCI", "n")]
+groups_wide <- spread(groups, key = MCI, value = n)
+```
+
+```{r}
+z <- groups_wide[, -c(1,1)]
+```
+
+The data can not have any missing values.
+
+```{r}
+z <- z[complete.cases(z), ]
+```
+
+The data must be scaled for comparison
+
+```{r}
+m <- apply(z, 2, mean)
+s <- apply(z, 2, sd)
+z <- scale(z, m, s)
+```
+
+Determine the number of clusters
+
+```{r}
+wss <- (nrow(z)-1) * sum(apply(z, 2, var))
+for (i in 2:20) wss[i] <- sum(kmeans(z, centers=i)$withiness)
+plot(1:20, wss, type='b', xlab='Number of Clusters', ylab='Within groups sum of squares')
+```
+
+This plot shows a very strong elbow, based on the plot, we can say with confidence that we do not need more than two clusters (centroids).
+
+Fitting a model 
+
+```{r}
+kc <- kmeans(z, 2)
+kc
+```
+
+Interpretation:
+
+First cluster has 121 neighbourhoods, and second cluster has 10 neighbourhoods.
+
+If the ranges of these numbers seem strange, it's because we standardized the data before performing the cluster analysis. The negative values mean "lower than most" and positive values mean "higher than most". Thus, cluster 1 is neighbourhoods with low assault, low auto theft, low break and enter, low robbery and low theft over. Cluster 2 are neighbourhoods with high assault, high auto theft, high break and enter, high robbery and high theft over. This is good that these two groups have a significant variance in every variable. It indicates that each variable plays a significant role in categorizing clusters.
+
+First, second and third neighbourhoods should all belong to cluster 1, the fourth neighbourhood should belong to cluster 2, and so on. 
+
+A measurement that is more relative would be the withinss and betweenss.
+withinss tells us the sum of the square of the distance from each data point to the cluster center. Lower is better. Betweenss tells us the sum of the squared distance between cluster centers.  Ideally we want cluster centers far apart from each other.
+
+Plotting the results.
+
+```{r}
+z1 <- data.frame(z, kc$cluster)
+clusplot(z1, kc$cluster, color=TRUE, shade=F, labels=0, lines=0, main='k-Means Cluster Analysis')
+```
+
+It appears that our choice of number of clusters is good, and we have little noise.
+
+## Hierarchical Clustering 
+
+For the hierarchical clustering methods, the dendrogram is the main graphical tool for getting insight into a cluster solution.
+
+```{r}
+z2 <- data.frame(z)
+```
+
+```{r}
+distance <- dist(z2)
+```
+
+
+```{r}
+hc <- hclust(distance)
+```
+
+Now that we've got a cluster solution. Let's examine the results.
+
+```{r}
+groups_wide <- groups_wide[complete.cases(groups_wide), ]
+```
+
+
+```{r}
+plot(hc, labels = groups_wide$Neighbourhood, main='Cluster Dendrogram', cex=0.65)
+```
+
+If we choose any height along the y-axis of the dendogram, and move across the dendogram counting the number of lines that we cross, each line represents a cluster.For example, if we look at a height of 10, and move across the x-axis at that height, we'll cross two lines. That defines a two-cluster solution; by following the line down through all its branches, we can see the names of the neighbourhoods that are included in these two clusters. Looking at the dendogram for the Toronto's crimes data, we can see our data poins are very imbalanced. There are two distinct groups; one group consists of brunches with brunches and more brunches, while another group only consists few datapoints, and we can see these are Toronto's most dangerous neighbourhoods. However, I want to try many different groupings at once to start investigating.
+
+```{r}
+counts = sapply(2:6,function(ncl)table(cutree(hc,ncl)))
+names(counts) = 2:6
+counts
+```
+
+However, I am going to stick with 3-cluster solution, see what results I will get.
+
+```{r}
+member <- cutree(hc, 3)
+aggregate(z, list(member), mean)
+```
+
+In cluster 1, all the crime indicators are on the negative side, cluster 1 has a significant distinction on each variable compare with cluster 2 and cluster 3. Cluster 2 is higher in most of the crime indicators than cluster 3 except auto theft.    
+
+```{r}
+plot(silhouette(cutree(hc, 3), distance))
+```
+
+The plot indicates that we really do not need the third cluster. The vast majority of data points belong to the first cluster, and 2-cluster will be our solution.
+
+## Mapping.
+
+```{r}
+lat <- toronto$Lat
+lon <- toronto$Long
+crimes <- toronto$MCI
+to_map <- data.frame(crimes, lat, lon)
+colnames(to_map) <- c('crimes', 'lat', 'lon')
+sbbox <- make_bbox(lon = toronto$Long, lat = toronto$Lat, f = 0.01)
+my_map <- get_map(location = sbbox, maptype = "roadmap", scale = 2, color="bw", zoom = 10)
+ggmap(my_map) +
+  geom_point(data=to_map, aes(x = lon, y = lat, color = "#27AE60"), 
+             size = 0.5, alpha = 0.05) +
+  xlab('Longitude') +
+  ylab('Latitude') +
+  ggtitle('Location of Major Crime Indicators Toronto 2016') +
+  guides(color=FALSE)
+```
+
+It’s clear to see where the major crimes in the city occur. A large concentration in the harbour front area, South of North York is more peaceful than any other areas. However, point-stacking is not helpful when comparing high-density areas, so let's optimize this visualization.
+
+```{r}
+ggmap(my_map) +
+  geom_point(data=to_map, aes(x = lon, y = lat, color = "#27AE60"), 
+             size = 0.5, alpha = 0.05) +
+  xlab('Longitude') +
+  ylab('Latitude') +
+  ggtitle('Location of Major Crime Indicators Toronto 2016') +
+  guides(color=FALSE) +
+  facet_wrap(~ crimes, nrow = 2)
+```
+
+This is certainly more interesting and prettier. Some crimes, such as Assaults, and break and enter occur all over the city. Other crimes, such as auto theft has a little more points in the west side than the east side. Robbery and theft over primarily have clusters in the harbour front area. 
+
+## Summary
+
+Not many more questions can be answered by looking at the data of Toronto Major crimes Indicators. But that’s OK. There’s certainly other cool things to do with this data, such as creating a dashboard at MicroStrategy. 
