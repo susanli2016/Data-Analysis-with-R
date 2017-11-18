@@ -1,0 +1,246 @@
+---
+title: "Exploring and Clustering Happy Planet Index"
+output: html_document
+---
+
+The [Happy Planet Index (HPI)](http://happyplanetindex.org/) is an index of human well-being and environmental impact that was introduced by [NEF](http://neweconomics.org/), a UK-based economic think tank promoting social, economic and environmental justice. The index is weighted to give progressively higher scores to nations with lower ecological footprints. I downloaded the 2016 dataset from [HPI website](http://happyplanetindex.org/countries). My goal is to find correlations between several variables, then use clustering technic to seprarate these 140 countries into different clusters, according to happiness, wealth, life expectancy and carbon emissions. 
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(xlsx)
+hpi <- read.xlsx('hpi-data-2016.xlsx',sheetIndex = 5, header = TRUE)
+```
+
+### Load the packages
+
+```{r}
+library(dplyr)
+library(plotly)
+library(stringr)
+library(cluster)
+library(FactoMineR)
+library(factoextra)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(NbClust)
+```
+
+### Data Pre-processing
+
+```{r}
+hpi <- hpi[c(3:14)]
+hpi <- hpi[-c(146:163), ]
+hpi <- hpi[-c(1:4),]
+```
+
+```{r}
+names(hpi) <- c('country', 'region', 'life_expectancy', 'wellbeing', 'happy_years', 'footprint','inequality_outcomes', 'adj_life_expectancy', 'adj_wellbeing', 'hpi_index', 'gdp', 'population')
+```
+
+```{r}
+hpi <- hpi[-1, ]
+```
+
+
+```{r}
+# change data type
+hpi$country <- as.character(hpi$country)
+hpi$region <- as.character(hpi$region)
+hpi$life_expectancy <- as.numeric(hpi$life_expectancy)
+hpi$wellbeing <- as.numeric(hpi$wellbeing)
+hpi$happy_years <- as.numeric(hpi$happy_years)
+hpi$footprint <- as.numeric(hpi$footprint)
+hpi$inequality_outcomes <- as.numeric(hpi$inequality_outcomes)
+hpi$adj_life_expectancy <- as.numeric(hpi$adj_life_expectancy)
+hpi$adj_wellbeing <- as.numeric(hpi$adj_wellbeing)
+hpi$hpi <- as.numeric(hpi$hpi)
+hpi$gdp <- as.numeric(hpi$gdp)
+hpi$population <- as.numeric(hpi$population)
+```
+
+The head of the data
+
+```{r}
+head(hpi)
+```
+
+The structure of the data
+
+```{r}
+str(hpi)
+```
+
+The summary of the data
+
+```{r}
+summary(hpi[, 3:12])
+```
+
+The Top 10 Happies Countries(according to Happy Planet Index)
+
+Costa Rica takes the top spot - followed by Mexico and Colombia. Norway is the highest ranked European country
+
+```{r}
+hpi_sort <- hpi[with(hpi, order(-hpi_index)), ]
+hpi_top_20 <- head(hpi_sort, 20)
+hpi_top_20 <- hpi_top_20[, c(1, 10, 3, 4, 7)]
+hpi_top_20
+```
+
+Chad is at the bottom of the list, followed by Luxembourg.  Luxembourg is the most extreme example for a wealthy nation scoring very badly - it does well on life expectancy and well-being, and also has low inequality, but sustains this lifestyle with the largest ecological footprint per capita of any country in the world. It would require more than nine planets to sustain this way of life if every person on Earth lived the same way, showing that the standard of living comes at a high cost to the environment.
+
+```{r}
+hpi_bottom_20 <- tail(hpi_sort, 20)
+hpi_bottom_20 <- hpi_bottom_20[, c(1, 10, 3, 4, 7)]
+hpi_bottom_20
+```
+
+
+```{r}
+ggplot(hpi, aes(x=gdp, y=life_expectancy)) + 
+  geom_point(aes(size=population, color=region)) + coord_trans(x = 'log10') +
+  geom_smooth(method = 'loess') + ggtitle('Life Expectancy and GDP per Capita in USD log10') + theme_classic()
+```
+
+After log transformation, the relationship between GDP per capita and life expectancy is relatively strong. These two variables are concordant. The Pearson correlation between this two variable is reasonably high, at approximate 0.62.
+
+```{r}
+cor.test(hpi$gdp, hpi$life_expectancy)
+```
+
+```{r}
+ggplot(hpi, aes(x=life_expectancy, y=hpi_index)) + 
+  geom_point(aes(size=population, color=region)) + geom_smooth(method = 'loess') + ggtitle('Life Expectancy and Happy Planet Index Score') + theme_classic()
+```
+
+Many countries in Europe and Americas end up with middle-to-low HPI index because of their big carbon footprints, despite long life expectancy. 
+
+```{r}
+ggplot(hpi, aes(x=gdp, y=hpi)) + geom_point(aes(size=population, color=region)) + geom_smooth(method = 'loess') + ggtitle('GDP per Capita(log10) and Happy Planet Index Score') + coord_trans(x = 'log10')
+```
+
+GDP can't buy happiness. The correlation between GDP and Happy Planet Index score is indeed very low, at about 0.11.
+
+```{r}
+cor.test(hpi$gdp, hpi$hpi)
+```
+
+### Always(almost) scale the data.
+
+An important step of meaningful clustering consists of transforming the variables such that they have mean zero and standard deviation one.
+
+```{r}
+hpi[, 3:12] <- scale(hpi[, 3:12])
+summary(hpi[, 3:12])
+```
+
+A simple correlation heatmap
+
+```{r}
+qplot(x=Var1, y=Var2, data=melt(cor(hpi[, 3:12], use="p")), fill=value, geom="tile") +
+  scale_fill_gradient2(limits=c(-1, 1)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+             labs(title="Heatmap of Correlation Matrix", 
+                  x=NULL, y=NULL)
+```
+
+### Principal Component Analysis (PCA) 
+
+PCA is a procedure for identifying a smaller number of uncorrelated variables, called "principal components", from a large set of data. The goal of principal components analysis is to explain the maximum amount of variance with the minimum number of principal components.
+
+```{r}
+hpi.pca <- PCA(hpi[, 3:12], graph=FALSE)
+print(hpi.pca)
+```
+
+```{r}
+eigenvalues <- hpi.pca$eig
+head(eigenvalues)
+```
+
+Interpreting:
+
+1. The proportion of variation retained by the principal components was extracted above.
+
+2. eigenvalues is the amount of variation retained by each PC. The first PC corresponds to the maximum amount of variation in the data set. In this case, the first two principal components are worthy of consideration because [A commonly used criterion for the number of factors to rotate is the eigenvalues-greater-than-one rule proposed by Kaiser (1960)](http://www.rc.usf.edu/~jdorio/FA/Cliff%20(1988)%20The%20Eigenvalues-Greater-Than-One%20Rule%20and%20the%20Reliability%20of%20Components.pdf).
+
+```{r}
+fviz_screeplot(hpi.pca, addlabels = TRUE, ylim = c(0, 65))
+```
+
+The scree plot shows us which components explain most of the variability in the data. In this case, almost 80% of the variances contained in the data are retained by the first two principal components. 
+
+```{r}
+head(hpi.pca$var$contrib)
+```
+
+1. Variables that are correlated with PC1 and PC2 are the most important in explaining the variability in the data set.
+
+2. The contribution of variables was extracted above: The larger the value of the contribution, the more the variable contributes to the component.
+
+```{r}
+fviz_pca_var(hpi.pca, col.var="contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE 
+             )
+```
+
+This highlights the most important variables in explaining the variations retained by the principal components.
+
+### Using [Pam Clustering Analysis](http://www.sthda.com/english/wiki/partitioning-cluster-analysis-quick-start-guide-unsupervised-machine-learning#pam-partitioning-around-medoids) to group countries by wealth, development, carbon emissions, and happiness.
+
+When using clustering algorithms, k must be specified by the analyst. I use the following method to help finding the best k.
+
+```{r}
+number <- NbClust(hpi[, 3:12], distance="euclidean",
+               min.nc=2, max.nc=15, method='ward.D', index='all', alphaBeale = 0.1)
+```
+
+I will apply K=3 in the following steps.  
+
+```{r}
+set.seed(2017)
+pam <- pam(hpi[, 3:12], diss=FALSE, 3, keep.data=TRUE)
+fviz_silhouette(pam)
+```
+
+Number of countries assigned in each cluster. 
+
+```{r}
+hpi$country[pam$id.med]
+```
+
+This prints out one typical country represents each cluster.  
+
+```{r}
+fviz_cluster(pam, stand = FALSE, geom = "point",
+             ellipse.type = "norm")
+```
+
+It is always a good idea to look at the cluster results, see how these three clusters were assigned. 
+
+### A World map of three clusters 
+
+```{r}
+hpi['cluster'] <- as.factor(pam$clustering)
+map <- map_data("world")
+map <- left_join(map, hpi, by = c('region' = 'country'))
+ggplot() + geom_polygon(data = map, aes(x = long, y = lat, group = group, fill=cluster, color=cluster)) +
+  labs(title = "Clustering Happy Planet Index", subtitle = "Based on data from:http://happyplanetindex.org/", x=NULL, y=NULL) + theme_minimal()
+```
+
+References: 
+
+[STHDA](http://www.sthda.com/english/wiki/principal-component-analysis-how-to-reveal-the-most-important-variables-in-your-data-r-software-and-data-mining)
+
+[r-bloggers](https://www.r-bloggers.com/factoextra-r-package-easy-multivariate-data-analyses-and-elegant-visualization/)
+
+[FactoMineR](http://factominer.free.fr/)
+
+[NbClust](https://www.rdocumentation.org/packages/NbClust/versions/3.0/topics/NbClust)
+
+[DataScience+](https://datascienceplus.com/)
