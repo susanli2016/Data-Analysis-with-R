@@ -1,0 +1,254 @@
+---
+title: "Customer Lifetime Value - BTYD"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(BTYD)
+library(readxl)
+```
+
+```{r}
+retail <- read_excel('Online_retail.xlsx')
+retail <- retail[complete.cases(retail), ]
+```
+
+```{r}
+retail$InvoiceNo <- NULL
+retail$StockCode <- NULL
+retail$Description <- NULL
+retail$Country <- NULL
+retail$Sales <- retail$Quantity * retail$UnitPrice
+retail$Quantity <- NULL
+retail$UnitPrice <- NULL
+```
+
+
+```{r}
+retail$InvoiceDate <- as.Date(retail$InvoiceDate, "%Y%m%d")
+```
+
+Our retail data now has dates in the right format, but a bit more cleaning needs to be done. Transaction-flow models, such as the Pareto/NBD, is concerned
+with interpurchase time. Since our timing information is only accurate to the
+day, we should merge all transactions that occurred on the same day. 
+
+```{r}
+names(retail) <- c("date", "cust", "sales")
+retail <- retail[c("cust", "date", "sales")]
+```
+
+Remove negative sales amount.
+
+```{r}
+retail <- retail[retail$sales >= 0, ]
+```
+
+```{r}
+elog <- retail
+```
+
+
+```{r}
+elog <- dc.MergeTransactionsOnSameDate(elog);
+```
+
+To validate that the model works, we need to divide the data up into a
+calibration period and a holdout period. This is relatively simple with either an event log or a customer-by-time matrix, which we are going to create soon. I
+am going to use 8 June 2011 as the cutoff date, as this point (27 weeks)
+divides the dataset in half. The reason for doing this split now will become
+evident when we are building a customer-by-sufficient-statistic matrix from the customer-by-time matrix—it requires a last transaction date, and we want to
+make sure that last transaction date is the last date in the calibration period and not in the total period.
+
+```{r}
+end.of.cal.period <- as.Date("2011-06-08")
+elog.cal <- elog[which(elog$date <= end.of.cal.period), ]
+```
+
+```{r}
+split.data <- dc.SplitUpElogForRepeatTrans(elog.cal);
+clean.elog <- split.data$repeat.trans.elog;
+```
+
+The next step is to create a customer-by-time matrix. This is simply a matrix
+with a row for each customer and a column for each date. There are several
+different options for creating these matrices:
+
+- Frequency—each matrix entry will contain the number of transactions
+made by that customer on that day. Use dc.CreateFreqCBT. If you have
+already used dc.MergeTransactionsOnSameDate, this will simply be a
+reach customer-by-time matrix.
+
+- Reach—each matrix entry will contain a 1 if the customer made any
+transactions on that day, and 0 otherwise. Use dc.CreateReachCBT.
+
+- Spend—each matrix entry will contain the amount spent by that customer
+on that day. Use dc.CreateSpendCBT. You can set whether to use total
+spend for each day or average spend for each day by changing the
+is.avg.spend parameter. In most cases, leaving is.avg.spend as FALSE
+is appropriate.
+
+```{r}
+freq.cbt <- dc.CreateFreqCBT(clean.elog);
+freq.cbt[1:3,1:5]
+```
+
+We have a small problem now—since we have deleted all the first transactions,
+the frequency customer-by-time matrix does not have any of the customers who
+made zero repeat transactions. These customers are still important; in fact, in most datasets, more customers make zero repeat transactions than any other
+number. Solving the problem is reasonably simple: we create a customer-by-time
+matrix using all transactions, and then merge the filtered CBT with this total
+CBT (using data from the filtered CBT and customer IDs from the total CBT).
+
+```{r}
+tot.cbt <- dc.CreateFreqCBT(elog)
+cal.cbt <- dc.MergeCustomers(tot.cbt, freq.cbt)
+```
+
+```{r}
+birth.periods <- split.data$cust.data$birth.per
+last.dates <- split.data$cust.data$last.date
+cal.cbs.dates <- data.frame(birth.periods, last.dates,
+end.of.cal.period)
+cal.cbs <- dc.BuildCBSFromCBTAndDates(cal.cbt, cal.cbs.dates,
+per="week")
+```
+
+```{r}
+params <- pnbd.EstimateParameters(cal.cbs);
+params
+```
+
+```{r}
+LL <- pnbd.cbs.LL(params, cal.cbs);
+LL
+```
+
+As with any optimization, we should not be satisfied with the first output we
+get. Let’s run it a couple more times, with its own output as a starting point, to see if it converges:
+
+```{r}
+p.matrix <- c(params, LL);
+for (i in 1:2){
+params <- pnbd.EstimateParameters(cal.cbs, params);
+LL <- pnbd.cbs.LL(params, cal.cbs);
+p.matrix.row <- c(params, LL);
+p.matrix <- rbind(p.matrix, p.matrix.row);
+}
+colnames(p.matrix) <- c("r", "alpha", "s", "beta", "LL");
+rownames(p.matrix) <- 1:3;
+p.matrix;
+```
+
+Individual level estimation
+
+```{r}
+pnbd.Expectation(params, t=52);
+```
+
+```{r}
+cal.cbs["15311",]
+```
+
+```{r}
+x <- cal.cbs["15311", "x"]
+t.x <- cal.cbs["15311", "t.x"]
+T.cal <- cal.cbs["15311", "T.cal"]
+pnbd.ConditionalExpectedTransactions(params, T.star = 52,
+x, t.x, T.cal)
+```
+
+```{r}
+pnbd.PAlive(params, x, t.x, T.cal)
+```
+
+Using the conditional expectation function, we can see the “increasing frequency paradox” in action:
+
+```{r}
+for (i in seq(10, 25, 5)){
+cond.expectation <- pnbd.ConditionalExpectedTransactions(
+params, T.star = 52, x = i,
+t.x = 24, T.cal = 27)
+cat ("x:",i,"\t Expectation:",cond.expectation, fill = TRUE)
+}
+```
+
+```{r}
+pnbd.PlotFrequencyInCalibration(params, cal.cbs, 7)
+```
+
+```{r}
+elog <- dc.SplitUpElogForRepeatTrans(elog)$repeat.trans.elog;
+x.star <- rep(0, nrow(cal.cbs));
+cal.cbs <- cbind(cal.cbs, x.star);
+elog.custs <- elog$cust;
+for (i in 1:nrow(cal.cbs)){
+current.cust <- rownames(cal.cbs)[i]
+tot.cust.trans <- length(which(elog.custs == current.cust))
+cal.trans <- cal.cbs[i, "x"]
+cal.cbs[i, "x.star"] <- tot.cust.trans - cal.trans
+}
+cal.cbs[1:3,]
+```
+
+```{r}
+T.star <- 27 # length of the holdout period
+censor <- 7 # This censor serves the same purpose described above
+x.star <- cal.cbs[,"x.star"]
+comp <- pnbd.PlotFreqVsConditionalExpectedFrequency(params, T.star,
+cal.cbs, x.star, censor)
+```
+
+```{r}
+rownames(comp) <- c("act", "exp", "bin")
+comp
+```
+
+As you can see above, the graph also produces a matrix output. Most
+plotting functions in the BTYD package produce output like this. They are often worth looking at because they contain additional information not presented in the graph—the size of each bin in the graph. In this graph, for example, this information is important because the bin sizes show that the gap at zero means a lot more than the precision at 6 or 7 transactions. Despite this, this graph shows that the model fits the data very well in the holdout period.
+
+```{r}
+tot.cbt <- dc.CreateFreqCBT(elog)
+```
+
+```{r}
+d.track.data <- rep(0, 7 * 53)
+origin <- as.Date("2010-12-01")
+for (i in colnames(tot.cbt)){
+date.index <- difftime(as.Date(i), origin) + 1;
+d.track.data[date.index] <- sum(tot.cbt[,i]);
+}
+w.track.data <- rep(0, 53)
+for (j in 1:53){
+w.track.data[j] <- sum(d.track.data[(j*7-6):(j*7)])
+}
+```
+
+```{r}
+T.cal <- cal.cbs[,"T.cal"]
+T.tot <- 53
+n.periods.final <- 53
+inc.tracking <- pnbd.PlotTrackingInc(params, T.cal,
+T.tot, w.track.data,
+n.periods.final)
+```
+
+```{r}
+inc.tracking[,20:25]
+```
+
+Although the above figure shows that the model is definitely capturing the trend of customer purchases over time, it is very messy and may not convince skeptics. Furthermore, the matrix, of which a sample is shown, does not really convey much information since purchases can vary so much from one week to the next. For these reasons, we may need to smooth the data out by cumulating it over time, as shown in the following figure.
+
+```{r}
+cum.tracking.data <- cumsum(w.track.data)
+cum.tracking <- pnbd.PlotTrackingCum(params, T.cal,
+T.tot, cum.tracking.data,
+n.periods.final)
+```
+
+```{r}
+cum.tracking[,20:25]
+```
