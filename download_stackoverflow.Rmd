@@ -1,0 +1,262 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidytext)
+library(tidyverse)
+library(broom)
+library(purrr)
+library(scales)
+theme_set(theme_bw())
+```
+
+
+```{r}
+questions <- read_csv("Questions.csv")
+question_tags <- read_csv("Tags.csv")
+```
+
+```{r}
+question_tags %>%
+  count(Tag, sort = TRUE)
+```
+
+```{r}
+questions <- questions[ -c(8:29)]
+```
+
+```{r}
+questions %>%
+  count(Week = round_date(CreationDate, "week")) %>%
+  ggplot(aes(Week, n)) +
+  geom_line() + 
+  ggtitle('The Number of Questions Asked Per Week')
+```
+
+
+```{r}
+tags <- c("c#", "javascript", "python", "r", "php")
+
+q_per_year <- questions %>%
+  count(Year = year(CreationDate)) %>%
+  rename(YearTotal = n)
+
+tags_per_year <- question_tags %>%
+  filter(Tag %in% tags) %>%
+  inner_join(questions) %>%
+  count(Year = year(CreationDate), Tag) %>%
+  inner_join(q_per_year)
+
+ggplot(tags_per_year, aes(Year, n / YearTotal, color = Tag)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  ylab("% of Stack Overflow questions with this tag") +
+  ggtitle('Growth or Shrinking of Particular Tags Overtime')
+```
+
+```{r}
+title_words <- questions %>%
+    select(Id, Title, Score, CreationDate) %>%
+    unnest_tokens(Word, Title)
+```
+
+```{r}
+title_word_counts <- title_words %>%
+  anti_join(stop_words, c(Word = "word")) %>%
+  count(Word, sort = TRUE)
+
+title_word_counts %>%
+  head(20) %>%
+  mutate(Word = reorder(Word, n)) %>%
+  ggplot(aes(Word, n)) +
+  geom_col(fill = "cyan4", alpha = 0.8, width = 0.6) +
+  labs(x = NULL, y = "Number of appearances in titles",
+         title = "The most common words in the question titles",
+         subtitle = "After removing stop words") + 
+  coord_flip()
+```
+
+```{r}
+common_tags <- question_tags %>%
+    group_by(Tag) %>%
+    mutate(TagTotal = n()) %>%
+    ungroup() %>%
+    filter(TagTotal >= 100)
+
+tag_word_tfidf <- common_tags %>%
+    inner_join(title_words, by = "Id") %>%
+    count(Tag, Word, TagTotal, sort = TRUE) %>%
+    ungroup() %>%
+    bind_tf_idf(Word, Tag, n)
+
+tag_word_tfidf %>%
+    filter(TagTotal > 1000) %>%
+    arrange(desc(tf_idf)) %>%
+    head(10)
+```
+
+```{r}
+tag_word_tfidf %>%
+  filter(Tag %in% c("c#", "python", "java", "php", "javascript", "android")) %>%
+  group_by(Tag) %>%
+  top_n(12, tf_idf) %>%
+  ungroup() %>%
+  mutate(Word = reorder(Word, tf_idf)) %>%
+  ggplot(aes(Word, tf_idf, fill = Tag)) +
+  geom_col(show.legend = FALSE, width = 0.6) +
+  facet_wrap(~ Tag, scales = "free") +
+  ylab("tf-idf") +
+  coord_flip() +
+  ggtitle('The 12 terms with the highest tf-idf within each of the top tag categories')
+```
+
+```{r}
+questions$month<-month(questions$CreationDate)
+```
+
+```{r}
+titles_per_month <- questions %>%
+  group_by(month) %>%
+  summarize(month_total = n())
+```
+
+```{r}
+questions$year <- year(questions$CreationDate)
+```
+
+
+```{r}
+title_words <- questions %>%
+  arrange(desc(Score)) %>%
+  distinct(Title, .keep_all = TRUE) %>%
+  unnest_tokens(word, Title, drop = FALSE) %>%
+  distinct(Id, word, .keep_all = TRUE) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[^\\d]")) %>%
+  group_by(word) %>%
+  mutate(word_total = n()) %>%
+  ungroup()
+```
+
+
+```{r}
+word_month_counts <- title_words %>%
+  filter(word_total >= 1000) %>%
+  count(word, month, year) %>%
+  complete(word, month, year, fill = list(n = 0)) %>%
+  inner_join(titles_per_month, by = "month") %>%
+  mutate(percent = n / month_total)
+
+word_month_counts
+```
+
+```{r}
+mod <- ~ glm(cbind(n, month_total - n) ~ year, ., family = "binomial")
+
+slopes <- word_month_counts %>%
+  nest(-word) %>%
+  mutate(model = map(data, mod)) %>%
+  unnest(map(model, tidy)) %>%
+  filter(term == "year") %>%
+  arrange(desc(estimate))
+
+slopes
+```
+
+```{r}
+slopes %>%
+  head(16) %>%
+  inner_join(word_month_counts, by = "word") %>%
+  mutate(word = reorder(word, -estimate)) %>%
+  ggplot(aes(year, n / month_total, color = word)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth(show.legend = FALSE) +
+  scale_y_continuous(labels = percent_format()) +
+  facet_wrap(~ word, scales = "free_y") +
+  expand_limits(y = 0) +
+  labs(x = "Year",
+       y = "Percentage of titles containing this term",
+       title = "16 fastest growing words in Stack Overflow question titles")
+```
+
+```{r}
+slopes %>%
+  tail(16) %>%
+  inner_join(word_month_counts, by = "word") %>%
+  mutate(word = reorder(word, -estimate)) %>%
+  ggplot(aes(year, n / month_total, color = word)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth(show.legend = FALSE) +
+  scale_y_continuous(labels = percent_format()) +
+  facet_wrap(~ word, scales = "free_y") +
+  expand_limits(y = 0) +
+  labs(x = "Year",
+       y = "Percentage of titles containing this term",
+       title = "16 fastest shrinking words in Stack Overflow question titles")
+```
+
+```{r}
+title_bigrams <- questions %>%
+  unnest_tokens(bigram, Title, token = "ngrams", n = 2)
+
+title_bigrams
+```
+
+```{r}
+title_bigrams %>%
+  count(bigram, sort = TRUE)
+```
+
+```{r}
+bigrams_separated <- title_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts
+```
+
+```{r}
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigrams_united %>%
+  count(bigram, sort = TRUE)
+```
+
+```{r}
+questions %>%
+  unnest_tokens(trigram, Title, token = "ngrams", n = 3) %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ") %>%
+  filter(!word1 %in% stop_words$word,
+         !word2 %in% stop_words$word,
+         !word3 %in% stop_words$word) %>%
+  count(word1, word2, word3, sort = TRUE)
+```
+
+```{r}
+total <- merge(questions,question_tags,by="Id")
+```
+
+
+```{r}
+write.csv(total, file = "/Users/sli/Documents/total.csv", row.names = FALSE)
+```
+
