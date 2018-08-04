@@ -1,0 +1,440 @@
+---
+title: "Text Mining and Sentiment Analysis of Hilton Hawaiian Village TripAdvisor Reviews"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(tidytext)
+library(tidyverse)
+library(stringr)
+library(tidyr)
+library(scales)
+library(broom)
+library(purrr)
+library(widyr)
+library(igraph)
+library(ggraph)
+library(SnowballC)
+library(wordcloud)
+library(reshape2)
+theme_set(theme_minimal())
+```
+
+## The Data
+
+```{r}
+df <- read_csv("Hilton_Hawaiian_Village_Waikiki_Beach_Resort-Honolulu_Oahu_Hawaii__en.csv")
+```
+
+```{r}
+df <- df[complete.cases(df), ]
+df$review_date <- as.Date(df$review_date, format = "%d-%B-%y")
+```
+
+I did web scraping and scraped total 13,701 reviews on TripAdvisor for Hilton Hawaiian Village and the review date range from 2002-03-21 to 2018-08-02.
+
+```{r}
+dim(df); min(df$review_date); max(df$review_date)
+```
+
+```{r}
+df %>%
+  count(Week = round_date(review_date, "week")) %>%
+  ggplot(aes(Week, n)) +
+  geom_line() + 
+  ggtitle('The Number of Reviews Per Week')
+```
+
+The highest numbers of weekly reviews were received at the end of 2014. The hotel received over 70 reviews in that week.
+
+### Text Mining of the review text
+
+```{r}
+df <- tibble::rowid_to_column(df, "ID")
+df <- df %>%
+  mutate(review_date = as.POSIXct(review_date, origin = "1970-01-01"),month = round_date(review_date, "month"))
+
+review_words <- df %>%
+  distinct(review_body, .keep_all = TRUE) %>%
+  unnest_tokens(word, review_body, drop = FALSE) %>%
+  distinct(ID, word, .keep_all = TRUE) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[^\\d]")) %>%
+  group_by(word) %>%
+  mutate(word_total = n()) %>%
+  ungroup()
+
+word_counts <- review_words %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+word_counts %>%
+  head(25) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Most common words in review text 2002 to date",
+       subtitle = "Among 13,701 reviews; stop words removed",
+       y = "# of uses")
+```
+
+We can definitely do a better job to combine "stay" and stayed", and "pool" and "pools". This is called stemming. Stemming is the process of reducing inflected (or sometimes derived) words to their word stem, base or root format.
+
+```{r}
+word_counts %>%
+  head(25) %>%
+  mutate(word = wordStem(word)) %>% 
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Most common words in review text 2002 to date",
+       subtitle = "Among 13,701 reviews; stop words removed and stemmed",
+       y = "# of uses")
+```
+
+### Bigrams
+
+We often want to understand the relationship between words in a review. What sequences of words are common across review text? Given a sequence of words, what word is most likely to follow? What words have the strongest relationship with each other? Therefore, many interesting text analysis are based on the relationships. When we exam pairs of two consecutive words, it is often called “bigrams”.
+
+So, what are the most common bigrams Hilton Hawaiian Village's TripAdvisor reviews?
+
+```{r}
+review_bigrams <- df %>%
+  unnest_tokens(bigram, review_body, token = "ngrams", n = 2)
+
+bigrams_separated <- review_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigrams_united %>%
+  count(bigram, sort = TRUE)
+```
+
+The most common bigrams is "rainbow tower", customers talked about it a lot, followed by "hawaiian village".
+
+Word networks in TripAdvisor Reviews
+We can visualize bigrams like so:
+
+```{r}
+review_subject <- df %>% 
+  unnest_tokens(word, review_body) %>% 
+  anti_join(stop_words)
+
+my_stopwords <- data_frame(word = c(as.character(1:10)))
+review_subject <- review_subject %>% 
+  anti_join(my_stopwords)
+
+title_word_pairs <- review_subject %>% 
+  pairwise_count(word, ID, sort = TRUE, upper = FALSE)
+
+set.seed(1234)
+title_word_pairs %>%
+  filter(n >= 1000) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = unit(0.2, "lines")) +
+  ggtitle('Word network in TripAdvisor reviews')
+  theme_void()
+```
+
+The above visualizes the common bigrams in TripAdvisor reviews, showing those that occurred at least 1000 times and where neither word was a stop-word.
+
+The network graph shows such strong connections between the top dozen or so words (words like “hawaiian”, “village”, “ocean” and “view”) that we do not see clear clustering structure in the network.
+
+### Trigrams
+
+Bigrams sometimes are not enough, let's see what are the most common trigrams in Hilton Hawaiian Village's TripAdvisor reviews?
+
+```{r}
+review_trigrams <- df %>%
+  unnest_tokens(trigram, review_body, token = "ngrams", n = 3)
+
+trigrams_separated <- review_trigrams %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ")
+
+trigrams_filtered <- trigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word)
+
+trigram_counts <- trigrams_filtered %>% 
+  count(word1, word2, word3, sort = TRUE)
+
+trigrams_united <- trigrams_filtered %>%
+  unite(trigram, word1, word2, word3, sep = " ")
+
+trigrams_united %>%
+  count(trigram, sort = TRUE)
+```
+
+The most common trigram is "hilton hawaiian village", followed by "diamond head tower", and so on.
+
+### Important words trending in reviews.
+
+What words and topics have become more frequent, or less frequent, over time? These could give us a sense of the hotel changing ecosystem, such as service, renovation, problem solving and let us predict what topics will continue to grow in relevance.
+
+```{r}
+reviews_per_month <- df %>%
+  group_by(month) %>%
+  summarize(month_total = n())
+
+word_month_counts <- review_words %>%
+  filter(word_total >= 1000) %>%
+  count(word, month) %>%
+  complete(word, month, fill = list(n = 0)) %>%
+  inner_join(reviews_per_month, by = "month") %>%
+  mutate(percent = n / month_total) %>%
+  mutate(year = year(month) + yday(month) / 365)
+```
+
+```{r}
+mod <- ~ glm(cbind(n, month_total - n) ~ year, ., family = "binomial")
+
+slopes <- word_month_counts %>%
+  nest(-word) %>%
+  mutate(model = map(data, mod)) %>%
+  unnest(map(model, tidy)) %>%
+  filter(term == "year") %>%
+  arrange(desc(estimate))
+```
+
+We want to ask questions like: what words have been increasing in frequency over time in TripAdvisor reviews?
+
+```{r}
+slopes %>%
+  head(9) %>%
+  inner_join(word_month_counts, by = "word") %>%
+  mutate(word = reorder(word, -estimate)) %>%
+  ggplot(aes(month, n / month_total, color = word)) +
+  geom_line(show.legend = FALSE) +
+  scale_y_continuous(labels = percent_format()) +
+  facet_wrap(~ word, scales = "free_y") +
+  expand_limits(y = 0) +
+  labs(x = "Year",
+       y = "Percentage of reviews containing this word",
+       title = "9 fastest growing words in TripAdvisor reviews",
+       subtitle = "Judged by growth rate over 15 years")
+```
+
+We can see a peak of discussion around "friday fireworks" and "lagoon" prior to 2010. And word like "resort fee" and "busy" grew most quickly prior to 2005.
+
+What words have been decreasing in frequency in the reviews?
+
+```{r}
+slopes %>%
+  tail(9) %>%
+  inner_join(word_month_counts, by = "word") %>%
+  mutate(word = reorder(word, estimate)) %>%
+  ggplot(aes(month, n / month_total, color = word)) +
+  geom_line(show.legend = FALSE) +
+  scale_y_continuous(labels = percent_format()) +
+  facet_wrap(~ word, scales = "free_y") +
+  expand_limits(y = 0) +
+  labs(x = "Year",
+       y = "Percentage of reviews containing this term",
+       title = "9 fastest shrinking words in TripAdvisor reviews",
+       subtitle = "Judged by growth rate over 15 years")
+```
+
+This shows a few topics in which interest has died out since 2010, including "hhv" (short for hilton hawaiian village I believe), "breakfast", "upgraded" and "prices".
+
+Let's compare a couple of selected words.
+
+```{r}
+word_month_counts %>%
+  filter(word %in% c("service", "food")) %>%
+  ggplot(aes(month, n / month_total, color = word)) +
+  geom_line(size = 1, alpha = .8) +
+  scale_y_continuous(labels = percent_format()) +
+  expand_limits(y = 0) +
+  labs(x = "Year",
+       y = "Percentage of reviews containing this term", title = "service vs food in terms of reviewers interest")
+```
+
+Service and food were both the top topics prior to 2010. The conversation about service and food peaked at the beginning of the data around 2003, It has been in a downward trend after 2005, with occasional peaks.
+
+## Sentiment Analysis
+
+Sentiment analysis is widely applied to voice of the customer materials such as reviews and survey responses, online and social media, for applications that range from marketing to customer service to clinical medicine.
+
+In our case, we aim to determine the attitude of a reviewer (i.e. hotel guest) with respect to his (or her) past experience or emotional reaction towards the hotel. The attitude may be a judgment or evaluation.
+
+The Most Common Positive and Negative Words in the reviews.
+
+```{r}
+reviews <- df %>% 
+  filter(!is.na(review_body)) %>% 
+  select(ID, review_body) %>% 
+  group_by(row_number()) %>% 
+  ungroup()
+tidy_reviews <- reviews %>%
+  unnest_tokens(word, review_body)
+tidy_reviews <- tidy_reviews %>%
+  anti_join(stop_words)
+
+bing_word_counts <- tidy_reviews %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free") +
+  labs(y = "Contribution to sentiment", x = NULL) +
+  coord_flip() + 
+  ggtitle('Words that contribute to positive and negative sentiment in the reviews')
+```
+
+Let's try another sentiment library to see whether the results are the same.
+
+```{r}
+contributions <- tidy_reviews %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(word) %>%
+  summarize(occurences = n(),
+            contribution = sum(score))
+contributions %>%
+  top_n(25, abs(contribution)) %>%
+  mutate(word = reorder(word, contribution)) %>%
+  ggplot(aes(word, contribution, fill = contribution > 0)) +
+  ggtitle('Words with the greatest contributions to positive/negative 
+          sentiment in reviews') +
+  geom_col(show.legend = FALSE) +
+  coord_flip()
+```
+
+Interesting to see that "diamond" (as diamond head) was categorized to positive sentiment.
+
+There is a potential problem here, for example, "clean", depending on the context, have a negative sentiment if preceded by the word "not". In fact unigrams will have this issue with negation in most cases. This bings us to the next topic:
+
+## Using bigrams to provide context in sentiment analysis
+
+We want to see how often words are preceded by a word like "not".
+
+```{r}
+bigrams_separated %>%
+  filter(word1 == "not") %>%
+  count(word1, word2, sort = TRUE)
+```
+
+There were 850 times in the data that word "a" is preceded by word "not", and 698 times in the date that word "the" preceded by word "not". However, this information is not meaningful.
+
+```{r}
+AFINN <- get_sentiments("afinn")
+not_words <- bigrams_separated %>%
+  filter(word1 == "not") %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word2, score, sort = TRUE) %>%
+  ungroup()
+
+not_words
+```
+
+This tells us that in the data, the most common sentiment-associated word to follow "not" is "worth", and the second common sentiment-associated word to follow "not" is "recommend", which would normally have a (positive) score of 2.
+
+So, in our data, which words contributed the most in the wrong direction?
+
+```{r}
+not_words %>%
+  mutate(contribution = n * score) %>%
+  arrange(desc(abs(contribution))) %>%
+  head(20) %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * score, fill = n * score > 0)) +
+  geom_col(show.legend = FALSE) +
+  xlab("Words preceded by \"not\"") +
+  ylab("Sentiment score * number of occurrences") +
+  ggtitle('The 20 words preceded by "not" that had the greatest contribution to 
+          sentiment scores, positive or negative direction') +
+  coord_flip()
+```
+
+The bigrams "not worth", "not great", "not good", "not recommend" and "not like" were the large causes of misidentification, making the text seem much more positive than it is. And the largest source of incorrectly classified negative sentiment is “not bad”.
+
+Except "not", there are other words that negate the subsequent term, such as "no", "never" and "without". Let's check them out.
+
+```{r}
+negation_words <- c("not", "no", "never", "without")
+
+negated_words <- bigrams_separated %>%
+  filter(word1 %in% negation_words) %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word1, word2, score, sort = TRUE) %>%
+  ungroup()
+
+negated_words %>%
+  mutate(contribution = n * score,
+         word2 = reorder(paste(word2, word1, sep = "__"), contribution)) %>%
+  group_by(word1) %>%
+  top_n(12, abs(contribution)) %>%
+  ggplot(aes(word2, contribution, fill = n * score > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ word1, scales = "free") +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  xlab("Words preceded by negation term") +
+  ylab("Sentiment score * # of occurrences") +
+  ggtitle('The most common positive or negative words to follow negations 
+          such as "no", "not", "never" and "without"') +
+  coord_flip()
+```
+
+It looks like the largest sources of misidentifying a word as positive come from "not worth/great/good/recommend”, and the largest source of incorrectly classified negative sentiment is “not bad” and "no problem".
+
+Lastly, let's find out the most postive and negative reviews.
+
+```{r}
+sentiment_messages <- tidy_reviews %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(ID) %>%
+  summarize(sentiment = mean(score),
+            words = n()) %>%
+  ungroup() %>%
+  filter(words >= 5)
+
+sentiment_messages %>%
+  arrange(desc(sentiment))
+
+df[ which(df$ID==2363), ]$review_body[1]
+```
+
+```{r}
+sentiment_messages %>%
+  arrange(sentiment)
+```
+
+```{r}
+df[ which(df$ID==3748), ]$review_body[1]
+```
+
